@@ -265,7 +265,7 @@ export default function AdminDashboard() {
                 <tbody>
                   {pendingDoctors.map(doc => (
                     <tr key={doc.id}>
-                      <td style={{ fontWeight: '500' }}>Dr. {doc.name}</td>
+                      <td style={{ fontWeight: '500' }}>{doc.name}</td>
                       <td style={{ color: 'var(--text-muted)' }}>{doc.email}</td>
                       <td>{doc.specialization}</td>
                       <td>{new Date(doc.created_at).toLocaleDateString()}</td>
@@ -359,7 +359,7 @@ export default function AdminDashboard() {
                             <div style={{ fontSize: '12px', color: 'var(--text-muted)' }}>{row.phone_number || 'No phone'}</div>
                           </td>
                           <td>
-                            <div style={{ fontWeight: '600', color: 'var(--text-dark)' }}>Dr. {row.doctor_name}</div>
+                            <div style={{ fontWeight: '600', color: 'var(--text-dark)' }}>{row.doctor_name}</div>
                             <div style={{ fontSize: '12px', color: 'var(--text-muted)' }}>{row.department || row.specialization}</div>
                           </td>
                           <td>{(row.appointment_mode || 'offline').toUpperCase()}</td>
@@ -367,10 +367,10 @@ export default function AdminDashboard() {
                           <td>
                             {row.appointment_mode === 'online' ? (
                               <span style={{ color: row.payment_status === 'paid' ? 'var(--success)' : '#B45309', fontWeight: '600' }}>
-                                {row.payment_status === 'paid' ? `Paid Rs. ${Number(row.doctor_fee || 0).toFixed(0)}` : 'Pending'}
+                                {row.payment_status === 'paid' ? `Paid Rs. ${Number(row.doctor_fee || 0).toFixed(0)}` : 'Pending Payment'}
                               </span>
                             ) : (
-                              <span style={{ color: 'var(--text-muted)' }}>Not required</span>
+                              <span style={{ color: 'var(--text-muted)' }}>{row.payment_status === 'paid' ? 'Paid at hospital' : 'Pay at hospital'}</span>
                             )}
                           </td>
                           <td>

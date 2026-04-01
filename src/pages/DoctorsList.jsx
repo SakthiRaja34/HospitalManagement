@@ -1,10 +1,12 @@
-import React, { useEffect, useState } from 'react';
+import React, { useContext, useEffect, useState } from 'react';
 import Navbar from '../components/Navbar';
 import Footer from '../components/Footer';
 import { UserCircle, ShieldCheck, Mail, Building2, Clock3, Search, Stethoscope } from 'lucide-react';
 import { Link } from 'react-router-dom';
+import { AuthContext } from '../context/AuthContext';
 
 export default function DoctorsList() {
+  const { user } = useContext(AuthContext);
   const [doctors, setDoctors] = useState([]);
   const [search, setSearch] = useState('');
   const [selectedSpecialization, setSelectedSpecialization] = useState('');
@@ -44,6 +46,18 @@ export default function DoctorsList() {
 
     return matchesSearch && matchesSpecialization && matchesDepartment;
   });
+
+  const getConsultationPath = (doctorId) => {
+    if (user?.role === 'patient') {
+      return `/patient?book=1&doctor=${doctorId}`;
+    }
+
+    if (!user) {
+      return `/patient-login?book=1&doctor=${doctorId}`;
+    }
+
+    return `/${user.role}`;
+  };
 
   return (
     <>
@@ -111,7 +125,7 @@ export default function DoctorsList() {
                 <div style={{ width: '100px', height: '100px', background: 'var(--bg-alt)', borderRadius: '50%', marginBottom: '1.5rem', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                   <UserCircle size={56} color="var(--primary-color)" />
                 </div>
-                <h3 style={{ fontSize: '1.5rem', marginBottom: '0.5rem', color: 'var(--text-dark)' }}>Dr. {doctor.name}</h3>
+                <h3 style={{ fontSize: '1.5rem', marginBottom: '0.5rem', color: 'var(--text-dark)' }}>{doctor.name}</h3>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '6px', background: 'var(--bg-light)', padding: '6px 16px', borderRadius: '20px', marginBottom: '1rem', border: '1px solid var(--border-light)' }}>
                   <ShieldCheck size={16} color="var(--success)" />
                   <span style={{ fontSize: '14px', fontWeight: '500', color: 'var(--text-muted)' }}>{doctor.specialization}</span>
@@ -136,7 +150,7 @@ export default function DoctorsList() {
                 <p style={{ color: 'var(--text-muted)', fontSize: '14px', marginBottom: '2rem', flexGrow: 1 }}>
                   {doctor.bio || "Dedicated specialist at MediCare HOS, committed to patient health and innovative treatments."}
                 </p>
-                <Link to="/register" className="btn btn-primary" style={{ width: '100%', padding: '12px' }}>
+                <Link to={getConsultationPath(doctor.doctor_id)} className="btn btn-primary" style={{ width: '100%', padding: '12px' }}>
                   Book Consultation
                 </Link>
               </div>

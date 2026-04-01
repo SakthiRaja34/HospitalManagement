@@ -1,9 +1,18 @@
 import React, { createContext, useState, useEffect } from 'react';
 
 export const AuthContext = createContext();
+const AUTH_STORAGE_KEY = 'hospital_auth_user';
 
 export const AuthProvider = ({ children }) => {
-  const [user, setUser] = useState(null);
+  const [user, setUser] = useState(() => {
+    try {
+      const storedUser = localStorage.getItem(AUTH_STORAGE_KEY);
+      return storedUser ? JSON.parse(storedUser) : null;
+    } catch (error) {
+      console.error('Unable to restore saved auth state:', error);
+      return null;
+    }
+  });
   const [loading, setLoading] = useState(true);
 
   // Check if logged in on mount
@@ -16,6 +25,10 @@ export const AuthProvider = ({ children }) => {
       .then((data) => {
         if (data.success) {
           setUser(data.user);
+          localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(data.user));
+        } else {
+          setUser(null);
+          localStorage.removeItem(AUTH_STORAGE_KEY);
         }
       })
       .catch((err) => console.error('Auth check fail:', err))
@@ -24,6 +37,7 @@ export const AuthProvider = ({ children }) => {
 
   const login = (userData) => {
     setUser(userData);
+    localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(userData));
   };
 
   const logout = () => {
@@ -33,6 +47,7 @@ export const AuthProvider = ({ children }) => {
     })
       .finally(() => {
         setUser(null);
+        localStorage.removeItem(AUTH_STORAGE_KEY);
       });
   };
 

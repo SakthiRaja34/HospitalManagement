@@ -34,3 +34,29 @@ To view the Admin Portal and approve newly registered doctors:
 - Go to the **Login Portal** link above.
 - **Email:** `admin@hospital.com`
 - **Password:** `admin123`
+
+### Demo Doctor Credentials
+These demo doctors are seeded for testing patient bookings and doctor login:
+
+- `arjun.kumar@gmail.com`
+- `priya.sharma@gmail.com`
+- `ravi.kumar@gmail.com`
+- `meena.iyer@gmail.com`
+- `suresh.babu@gmail.com`
+- `kavitha.rao@gmail.com`
+- `vinoth.raj@gmail.com`
+- `anjali.menon@gmail.com`
+- `karthik.reddy@gmail.com`
+- `deepa.nair@gmail.com`
+- `mohan.das@gmail.com`
+- `rekha.pillai@gmail.com`
+- `sanjay.gupta@gmail.com`
+- `latha.krishnan@gmail.com`
+- `harish.kumar@gmail.com`
+- `sneha.reddy@gmail.com`
+- `prakash.singh@gmail.com`
+- `divya.natarajan@gmail.com`
+- `ramesh.patel@gmail.com`
+- `neha.kapoor@gmail.com`
+
+Password for all demo doctors: `1234`

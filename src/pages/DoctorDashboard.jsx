@@ -5,6 +5,13 @@ import { Calendar, User, LogOut, CheckCircle, FileText, Phone, UserCircle2, Vide
 import useResponsive from '../hooks/useResponsive';
 import { specializationDepartmentMap, specializationOptions } from '../data/doctorOptions';
 
+const statusStyles = {
+  pending: { background: 'rgba(245, 158, 11, 0.14)', color: '#B45309' },
+  confirmed: { background: 'rgba(37, 99, 235, 0.14)', color: 'var(--primary-color)' },
+  completed: { background: 'rgba(16, 185, 129, 0.14)', color: 'var(--success)' },
+  cancelled: { background: 'rgba(239, 68, 68, 0.14)', color: 'var(--danger)' },
+};
+
 const availabilityOptions = [
   'Mon - Fri, 9:00 AM - 1:00 PM',
   'Mon - Fri, 2:00 PM - 6:00 PM',
@@ -34,10 +41,13 @@ export default function DoctorDashboard() {
   const { user, logout } = useContext(AuthContext);
   const isMobile = useResponsive(1100);
   const [appointments, setAppointments] = useState([]);
+  const [patientPrescriptions, setPatientPrescriptions] = useState([]);
   const [selectedAppt, setSelectedAppt] = useState(null);
   const [confirmedTime, setConfirmedTime] = useState('');
   const [meetingLink, setMeetingLink] = useState('');
   const [doctorNote, setDoctorNote] = useState('');
+  const [prescriptionMedicines, setPrescriptionMedicines] = useState('');
+  const [prescriptionNotes, setPrescriptionNotes] = useState('');
   const [scheduleError, setScheduleError] = useState('');
   const [scheduleMessage, setScheduleMessage] = useState('');
   const [activeView, setActiveView] = useState('schedule');
@@ -96,17 +106,93 @@ export default function DoctorDashboard() {
       .finally(() => setProfileLoading(false));
   };
 
-  const handleUpdateStatus = (id, newStatus) => {
-    fetch('http://localhost/Hospital/backend/api/appointments.php', {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
+  const refreshSelectedAppointment = (appointmentId, updates = {}) => {
+    setAppointments((current) =>
+      current.map((appt) => (appt.id === appointmentId ? { ...appt, ...updates } : appt))
+    );
+    setSelectedAppt((current) => (current?.id === appointmentId ? { ...current, ...updates } : current));
+  };
+
+  const handleAppointmentAction = async (id, action, extraPayload = {}, successMessage = '') => {
+    try {
+      const res = await fetch('http://localhost/Hospital/backend/api/appointments.php', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ id, action, ...extraPayload })
+      });
+      const data = await res.json();
+      if (!data.success) {
+        setScheduleError(data.error || 'Unable to update the appointment right now.');
+        setScheduleMessage('');
+        return false;
+      }
+
+      setScheduleError('');
+      if (successMessage) {
+        setScheduleMessage(successMessage);
+      }
+      fetchAppointments();
+      return true;
+    } catch (err) {
+      setScheduleError('Unable to update the appointment right now.');
+      setScheduleMessage('');
+      return false;
+    }
+  };
+
+  const handleUpdateStatus = async (id, newStatus) => {
+    const action = newStatus === 'completed' ? 'complete' : 'reject';
+    const ok = await handleAppointmentAction(
+      id,
+      action,
+      {},
+      newStatus === 'completed' ? 'Appointment marked as completed.' : 'Appointment cancelled successfully.'
+    );
+
+    if (ok) {
+      refreshSelectedAppointment(id, { status: newStatus });
+    }
+  };
+
+  const handleSaveNotes = async () => {
+    if (!selectedAppt) return;
+    const ok = await handleAppointmentAction(selectedAppt.id, 'notes', { doctor_note: doctorNote }, 'Doctor notes updated successfully.');
+    if (ok) {
+      refreshSelectedAppointment(selectedAppt.id, { doctor_note: doctorNote || null });
+    }
+  };
+
+  const handleSaveMeetingLink = async () => {
+    if (!selectedAppt || selectedAppt.appointment_mode !== 'online') return;
+    const ok = await handleAppointmentAction(selectedAppt.id, 'meeting_link', { meeting_link: meetingLink }, 'Meeting link updated successfully.');
+    if (ok) {
+      refreshSelectedAppointment(selectedAppt.id, { meeting_link: meetingLink || null });
+    }
+  };
+
+  const getPaymentText = (appt) => {
+    if (appt.appointment_mode === 'offline') {
+      return appt.payment_status === 'paid' ? 'Paid at hospital' : 'Pay at hospital';
+    }
+
+    return appt.payment_status === 'paid' ? 'Paid' : 'Pending Payment';
+  };
+
+  const fetchPatientPrescriptions = (patientId) => {
+    if (!patientId) {
+      setPatientPrescriptions([]);
+      return;
+    }
+
+    fetch(`http://localhost/Hospital/backend/api/prescriptions.php?patient_id=${patientId}`, {
+      method: 'GET',
       credentials: 'include',
-      body: JSON.stringify({ id, status: newStatus })
-    }).then(res => res.json())
-      .then(() => {
-        setAppointments(appointments.map(a => a.id === id ? { ...a, status: newStatus } : a));
-        if (selectedAppt && selectedAppt.id === id) {
-          setSelectedAppt({ ...selectedAppt, status: newStatus });
+    })
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.success) {
+          setPatientPrescriptions(data.data);
         }
       });
   };
@@ -116,8 +202,43 @@ export default function DoctorDashboard() {
     setConfirmedTime(formatDateTimeLocalValue(appt.doctor_confirmed_time || appt.appointment_date));
     setMeetingLink(appt.meeting_link || '');
     setDoctorNote(appt.doctor_note || '');
+    setPrescriptionMedicines('');
+    setPrescriptionNotes('');
     setScheduleError('');
     setScheduleMessage('');
+    fetchPatientPrescriptions(appt.patient_id);
+  };
+
+  const handleAddPrescription = async () => {
+    if (!selectedAppt) return;
+
+    try {
+      const res = await fetch('http://localhost/Hospital/backend/api/prescriptions.php', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          appointment_id: selectedAppt.id,
+          medicines: prescriptionMedicines,
+          notes: prescriptionNotes,
+        })
+      });
+      const data = await res.json();
+      if (!data.success) {
+        setScheduleError(data.error || 'Unable to save prescription right now.');
+        setScheduleMessage('');
+        return;
+      }
+
+      setPrescriptionMedicines('');
+      setPrescriptionNotes('');
+      setScheduleError('');
+      setScheduleMessage('Prescription added successfully.');
+      fetchPatientPrescriptions(selectedAppt.patient_id);
+    } catch (err) {
+      setScheduleError('Unable to save prescription right now.');
+      setScheduleMessage('');
+    }
   };
 
   const handleConfirmSchedule = async () => {
@@ -133,42 +254,24 @@ export default function DoctorDashboard() {
       return;
     }
 
-    try {
-      const res = await fetch('http://localhost/Hospital/backend/api/appointments.php', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({
-          id: selectedAppt.id,
-          action: 'confirm_schedule',
-          doctor_confirmed_time: formattedConfirmedTime,
-          meeting_link: meetingLink,
-          doctor_note: doctorNote,
-        })
-      });
-
-      const data = await res.json();
-      if (!data.success) {
-        setScheduleError(data.error || 'Unable to confirm the appointment right now.');
-        setScheduleMessage('');
-        return;
-      }
-
-      const updated = {
-        ...selectedAppt,
-        status: 'confirmed',
+    const ok = await handleAppointmentAction(
+      selectedAppt.id,
+      'confirm_schedule',
+      {
         doctor_confirmed_time: formattedConfirmedTime,
         meeting_link: meetingLink,
         doctor_note: doctorNote,
-      };
-      setSelectedAppt(updated);
-      setAppointments(appointments.map((appt) => (appt.id === updated.id ? updated : appt)));
-      setScheduleError('');
-      setScheduleMessage('Appointment confirmed successfully. The patient can now pay the fee and follow the confirmed schedule.');
-      fetchAppointments();
-    } catch (err) {
-      setScheduleError('Unable to confirm the appointment right now.');
-      setScheduleMessage('');
+      },
+      'Appointment confirmed successfully.'
+    );
+
+    if (ok) {
+      refreshSelectedAppointment(selectedAppt.id, {
+        status: 'confirmed',
+        doctor_confirmed_time: formattedConfirmedTime,
+        meeting_link: meetingLink || null,
+        doctor_note: doctorNote || null,
+      });
     }
   };
 
@@ -209,7 +312,7 @@ export default function DoctorDashboard() {
   const profileComplete = Boolean(profile?.profile_complete);
 
   return (
-    <div style={{ display: 'flex', flexDirection: isMobile ? 'column' : 'row', background: 'var(--bg-light)', minHeight: '100vh' }}>
+    <div style={{ display: 'flex', flexDirection: isMobile ? 'column' : 'row', background: 'var(--bg-light)', minHeight: '100vh', gap: isMobile ? 0 : '1.5rem', padding: isMobile ? 0 : '1.25rem', width: '100%', maxWidth: '100%', overflowX: 'hidden' }}>
       <aside className="sidebar">
         <Link to="/" className="text-gradient" style={{ marginBottom: '2rem', textDecoration: 'none', display: 'inline-block', fontSize: '1.8rem', fontWeight: '800' }}>
           MediCare HOS
@@ -219,7 +322,7 @@ export default function DoctorDashboard() {
             <User size={24} color="var(--primary-color)"/>
           </div>
           <div>
-            <h4 style={{ color: 'var(--text-dark)', margin: 0 }}>Dr. {user?.name}</h4>
+            <h4 style={{ color: 'var(--text-dark)', margin: 0 }}>{user?.name}</h4>
             <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>Doctor Portal</span>
           </div>
         </div>
@@ -262,7 +365,7 @@ export default function DoctorDashboard() {
         </button>
       </aside>
 
-      <main className="main-content" style={{ marginLeft: isMobile ? 0 : '320px', maxWidth: '1400px', width: '100%' }}>
+      <main className="main-content" style={{ marginLeft: 0, flex: '1 1 0', minWidth: 0, maxWidth: '100%', width: 'auto', overflowX: 'hidden' }}>
         {activeView === 'profile' ? (
           <div style={{ display: 'grid', gap: '1.5rem', maxWidth: '1040px' }}>
             <header className="clean-card fade-in" style={{ padding: '2rem' }}>
@@ -405,7 +508,7 @@ export default function DoctorDashboard() {
                     }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
                       <h3 style={{ margin: 0, color: 'var(--text-dark)' }}>{appt.patient_name}</h3>
-                      <span style={{ fontSize: '11px', fontWeight: '600', padding: '4px 10px', borderRadius: '20px', background: appt.status === 'confirmed' ? 'rgba(16, 185, 129, 0.1)' : 'var(--bg-light)', color: appt.status === 'confirmed' ? 'var(--success)' : 'var(--text-muted)' }}>
+                      <span style={{ fontSize: '11px', fontWeight: '600', padding: '4px 10px', borderRadius: '20px', background: (statusStyles[appt.status] || statusStyles.pending).background, color: (statusStyles[appt.status] || statusStyles.pending).color }}>
                         {appt.status.toUpperCase()}
                       </span>
                     </div>
@@ -414,16 +517,17 @@ export default function DoctorDashboard() {
                         {appt.appointment_mode === 'online' ? <Video size={13} /> : <Building2 size={13} />}
                         {(appt.appointment_mode || 'offline').toUpperCase()}
                       </span>
-                      {appt.appointment_mode === 'online' && (
-                        <span style={{ fontSize: '12px', fontWeight: '700', color: appt.payment_status === 'paid' ? 'var(--success)' : '#B45309', background: appt.payment_status === 'paid' ? 'rgba(16, 185, 129, 0.1)' : 'rgba(245, 158, 11, 0.12)', padding: '4px 10px', borderRadius: '999px', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
-                          <IndianRupee size={12} /> {appt.payment_status === 'paid' ? 'Fee paid' : 'Fee pending'}
-                        </span>
-                      )}
+                      <span style={{ fontSize: '12px', fontWeight: '700', color: appt.payment_status === 'paid' ? 'var(--success)' : appt.appointment_mode === 'offline' ? 'var(--text-muted)' : '#B45309', background: appt.payment_status === 'paid' ? 'rgba(16, 185, 129, 0.1)' : appt.appointment_mode === 'offline' ? 'rgba(148, 163, 184, 0.12)' : 'rgba(245, 158, 11, 0.12)', padding: '4px 10px', borderRadius: '999px', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                        <IndianRupee size={12} /> {getPaymentText(appt)}
+                      </span>
                     </div>
                     <p style={{ color: 'var(--text-muted)', fontSize: '14px', margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
                       <Calendar size={16} color="var(--primary-color)" />
                       {new Date(appt.appointment_date).toLocaleString()}
                     </p>
+                    {!appt.doctor_confirmed_time && (
+                      <div style={{ marginTop: '8px', fontSize: '12px', color: 'var(--text-muted)' }}>Waiting for doctor</div>
+                    )}
                   </div>
                 ))}
                 {appointments.length === 0 && (
@@ -450,11 +554,9 @@ export default function DoctorDashboard() {
                         {selectedAppt.appointment_mode === 'online' ? <Video size={13} /> : <Building2 size={13} />}
                         {(selectedAppt.appointment_mode || 'offline').toUpperCase()}
                       </span>
-                      {selectedAppt.appointment_mode === 'online' && (
-                        <span style={{ fontSize: '12px', fontWeight: '700', color: selectedAppt.payment_status === 'paid' ? 'var(--success)' : '#B45309', background: selectedAppt.payment_status === 'paid' ? 'rgba(16, 185, 129, 0.1)' : 'rgba(245, 158, 11, 0.12)', padding: '5px 12px', borderRadius: '999px' }}>
-                          {selectedAppt.payment_status === 'paid' ? 'Patient paid Rs. 500' : 'Waiting for Rs. 500 fee'}
-                        </span>
-                      )}
+                      <span style={{ fontSize: '12px', fontWeight: '700', color: selectedAppt.payment_status === 'paid' ? 'var(--success)' : selectedAppt.appointment_mode === 'offline' ? 'var(--text-muted)' : '#B45309', background: selectedAppt.payment_status === 'paid' ? 'rgba(16, 185, 129, 0.1)' : selectedAppt.appointment_mode === 'offline' ? 'rgba(148, 163, 184, 0.12)' : 'rgba(245, 158, 11, 0.12)', padding: '5px 12px', borderRadius: '999px' }}>
+                        {getPaymentText(selectedAppt)} | Rs. {Number(selectedAppt.doctor_fee || 0).toFixed(0)}
+                      </span>
                     </div>
                   </div>
 
@@ -492,7 +594,7 @@ export default function DoctorDashboard() {
                     </h4>
                     <div style={{ display: 'grid', gap: '0.9rem' }}>
                       <div>
-                        <label style={{ display: 'block', marginBottom: '6px', fontSize: '13px', fontWeight: '600' }}>Confirmed Meeting / Visit Time</label>
+                        <label style={{ display: 'block', marginBottom: '6px', fontSize: '13px', fontWeight: '600' }}>Confirmed Appointment Time</label>
                         <input
                           type="datetime-local"
                           className="input-glass"
@@ -515,52 +617,133 @@ export default function DoctorDashboard() {
                             onChange={(e) => setMeetingLink(e.target.value)}
                             placeholder="https://meet.example.com/..."
                           />
+                          <button type="button" className="btn btn-outline" onClick={handleSaveMeetingLink} style={{ marginTop: '0.7rem', width: '100%' }}>
+                            Save Meeting Link
+                          </button>
                         </div>
                       )}
-                  <div>
-                    <label style={{ display: 'block', marginBottom: '6px', fontSize: '13px', fontWeight: '600' }}>Doctor Note</label>
-                    <textarea
-                      className="input-glass"
+                      <div>
+                        <label style={{ display: 'block', marginBottom: '6px', fontSize: '13px', fontWeight: '600' }}>Doctor Note</label>
+                        <textarea
+                          className="input-glass"
                           rows={3}
                           value={doctorNote}
                           onChange={(e) => setDoctorNote(e.target.value)}
-                      placeholder="Add meeting instructions or arrival guidance"
-                      style={{ resize: 'vertical' }}
-                    />
-                  </div>
-                  {scheduleError && (
-                    <div style={{ background: 'rgba(239, 68, 68, 0.10)', color: 'var(--danger)', padding: '0.85rem 1rem', borderRadius: '12px', fontWeight: 600, fontSize: '13px' }}>
-                      {scheduleError}
-                    </div>
-                  )}
-                  {scheduleMessage && (
-                    <div style={{ background: 'rgba(16, 185, 129, 0.12)', color: 'var(--success)', padding: '0.85rem 1rem', borderRadius: '12px', fontWeight: 600, fontSize: '13px' }}>
-                      {scheduleMessage}
-                    </div>
-                  )}
-                  <button
-                    onClick={handleConfirmSchedule}
-                    style={{ background: 'var(--primary-color)', border: 'none', color: 'white', fontWeight: '600', padding: '12px', borderRadius: '8px', cursor: 'pointer', width: '100%' }}
-                  >
-                        Confirm Appointment Time
-                      </button>
+                          placeholder="Add consultation notes or visit guidance"
+                          style={{ resize: 'vertical' }}
+                        />
+                        <button type="button" className="btn btn-outline" onClick={handleSaveNotes} style={{ marginTop: '0.7rem', width: '100%' }}>
+                          Save Notes
+                        </button>
+                      </div>
+                      {scheduleError && (
+                        <div style={{ background: 'rgba(239, 68, 68, 0.10)', color: 'var(--danger)', padding: '0.85rem 1rem', borderRadius: '12px', fontWeight: 600, fontSize: '13px' }}>
+                          {scheduleError}
+                        </div>
+                      )}
+                      {scheduleMessage && (
+                        <div style={{ background: 'rgba(16, 185, 129, 0.12)', color: 'var(--success)', padding: '0.85rem 1rem', borderRadius: '12px', fontWeight: 600, fontSize: '13px' }}>
+                          {scheduleMessage}
+                        </div>
+                      )}
+                      {selectedAppt.status !== 'cancelled' && selectedAppt.status !== 'completed' && (
+                        <button
+                          type="button"
+                          onClick={handleConfirmSchedule}
+                          style={{ background: 'var(--primary-color)', border: 'none', color: 'white', fontWeight: '600', padding: '12px', borderRadius: '8px', cursor: 'pointer', width: '100%' }}
+                        >
+                          Accept Appointment
+                        </button>
+                      )}
                       {selectedAppt.status === 'confirmed' && (
-                        <div style={{ fontSize: '12px', color: 'var(--success)', display: 'flex', alignItems: 'center', gap: '5px' }}>
-                          <BadgeCheck size={13} /> Patient can now follow the confirmed schedule
+                        <div style={{ fontSize: '12px', color: 'var(--primary-color)', display: 'flex', alignItems: 'center', gap: '5px' }}>
+                          <BadgeCheck size={13} /> Confirmed with doctor response time
                         </div>
                       )}
                     </div>
                   </div>
 
-                  <div style={{ paddingTop: '1.5rem', borderTop: '1px solid var(--border-light)', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                  <div style={{ paddingTop: '1.5rem', borderTop: '1px solid var(--border-light)', display: 'grid', gap: '10px' }}>
                     {selectedAppt.status !== 'completed' && selectedAppt.status !== 'cancelled' && (
                       <button 
                         onClick={() => handleUpdateStatus(selectedAppt.id, 'completed')}
                         style={{ background: 'var(--success)', border: 'none', color: 'white', fontWeight: '600', padding: '12px', borderRadius: '8px', cursor: 'pointer', display: 'flex', gap: '8px', alignItems: 'center', justifyContent: 'center', width: '100%' }}>
-                        <CheckCircle size={18} /> Mark Session Completed
+                        <CheckCircle size={18} /> Complete Appointment
                       </button>
                     )}
+                    {selectedAppt.status !== 'cancelled' && selectedAppt.status !== 'completed' && (
+                      <button 
+                        onClick={() => handleUpdateStatus(selectedAppt.id, 'cancelled')}
+                        style={{ background: 'rgba(239, 68, 68, 0.12)', border: 'none', color: 'var(--danger)', fontWeight: '700', padding: '12px', borderRadius: '8px', cursor: 'pointer', width: '100%' }}>
+                        Reject Appointment
+                      </button>
+                    )}
+                    {selectedAppt.meeting_link && selectedAppt.appointment_mode === 'online' && (
+                      <a href={selectedAppt.meeting_link} target="_blank" rel="noreferrer" className="btn btn-outline" style={{ width: '100%' }}>
+                        Join Meeting
+                      </a>
+                    )}
+                    {selectedAppt.status === 'completed' && selectedAppt.doctor_note && (
+                      <div style={{ padding: '0.95rem 1rem', borderRadius: '12px', background: 'rgba(16, 185, 129, 0.08)', color: 'var(--text-muted)', fontSize: '13px', lineHeight: '1.6' }}>
+                        <strong style={{ color: 'var(--text-dark)' }}>Doctor Note:</strong> {selectedAppt.doctor_note}
+                      </div>
+                    )}
                   </div>
+
+                  {selectedAppt.status === 'completed' && (
+                    <div style={{ marginTop: '1.5rem', paddingTop: '1.5rem', borderTop: '1px solid var(--border-light)', display: 'grid', gap: '1rem' }}>
+                      <h4 style={{ color: 'var(--text-dark)', margin: 0 }}>Prescription</h4>
+                      <div>
+                        <label style={{ display: 'block', marginBottom: '6px', fontSize: '13px', fontWeight: '600' }}>Medicines</label>
+                        <textarea
+                          className="input-glass"
+                          rows={4}
+                          value={prescriptionMedicines}
+                          onChange={(e) => setPrescriptionMedicines(e.target.value)}
+                          placeholder="Example: Cetirizine 10mg - once daily for 5 days"
+                          style={{ resize: 'vertical' }}
+                        />
+                      </div>
+                      <div>
+                        <label style={{ display: 'block', marginBottom: '6px', fontSize: '13px', fontWeight: '600' }}>Prescription Notes</label>
+                        <textarea
+                          className="input-glass"
+                          rows={3}
+                          value={prescriptionNotes}
+                          onChange={(e) => setPrescriptionNotes(e.target.value)}
+                          placeholder="Diet advice, follow-up timing, special instructions..."
+                          style={{ resize: 'vertical' }}
+                        />
+                      </div>
+                      <button type="button" className="btn btn-primary" onClick={handleAddPrescription} disabled={!prescriptionMedicines.trim()}>
+                        Add Prescription
+                      </button>
+
+                      <div style={{ display: 'grid', gap: '0.8rem' }}>
+                        {patientPrescriptions.length === 0 ? (
+                          <div style={{ padding: '0.95rem 1rem', borderRadius: '12px', background: 'var(--bg-light)', color: 'var(--text-muted)', fontSize: '13px' }}>
+                            No prescriptions added for this patient yet.
+                          </div>
+                        ) : (
+                          patientPrescriptions.map((prescription) => (
+                            <div key={prescription.id} style={{ padding: '0.95rem 1rem', borderRadius: '12px', background: 'var(--bg-light)', border: '1px solid var(--border-light)' }}>
+                              <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginBottom: '0.45rem' }}>
+                                {new Date(prescription.created_at).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })}
+                              </div>
+                              <div style={{ marginBottom: '0.45rem' }}>
+                                <strong style={{ color: 'var(--text-dark)' }}>Medicines:</strong>
+                                <div style={{ color: 'var(--text-muted)', whiteSpace: 'pre-wrap' }}>{prescription.medicines}</div>
+                              </div>
+                              <div>
+                                <strong style={{ color: 'var(--text-dark)' }}>Notes:</strong>
+                                <div style={{ color: 'var(--text-muted)', whiteSpace: 'pre-wrap' }}>{prescription.notes || 'No additional notes.'}</div>
+                              </div>
+                            </div>
+                          ))
+                        )}
+                      </div>
+                    </div>
+                  )}
                 </div>
               ) : (
                 <div className="clean-card" style={{ padding: '3rem', textAlign: 'center', color: 'var(--text-muted)', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '1rem' }}>

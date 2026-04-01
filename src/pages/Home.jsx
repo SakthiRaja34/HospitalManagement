@@ -1,9 +1,10 @@
-import React, { useState, useEffect } from 'react';
+import React, { useContext, useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import Navbar from '../components/Navbar';
 import Footer from '../components/Footer';
 import { HeartPulse, Stethoscope, Microscope, Brain, ArrowRight, ShieldCheck, Clock } from 'lucide-react';
 import useResponsive from '../hooks/useResponsive';
+import { AuthContext } from '../context/AuthContext';
 
 // Hero Images
 import heroImg from '../assets/hospital_hero.png';
@@ -21,8 +22,10 @@ import doctorsImg from '../assets/doctors.png';
 const carouselImages = [heroImg, surgeryImg, patientCareImg];
 
 export default function Home() {
+  const { user } = useContext(AuthContext);
   const [currentSlide, setCurrentSlide] = useState(0);
   const isMobile = useResponsive(980);
+  const bookingPath = user?.role === 'patient' ? '/patient?book=1' : !user ? '/patient-login' : `/${user.role}`;
 
   useEffect(() => {
     const timer = setInterval(() => {
@@ -80,7 +83,7 @@ export default function Home() {
               Experience the future of medical treatment. MediCare HOS integrates expert doctors with cutting-edge facility management to prioritize your health and well-being.
             </p>
             <div className="animate-fade-in-up animate-delay-3" style={{ display: 'flex', gap: '1.5rem', flexWrap: 'wrap' }}>
-              <Link to="/register" className="btn btn-primary" style={{ padding: '18px 40px', fontSize: '1.15rem' }}>
+              <Link to={bookingPath} className="btn btn-primary" style={{ padding: '18px 40px', fontSize: '1.15rem' }}>
                 Book Appointment <ArrowRight size={20} />
               </Link>
               <Link to="/doctors" className="btn" style={{ padding: '18px 40px', fontSize: '1.15rem', background: 'rgba(255,255,255,0.1)', backdropFilter: 'blur(10px)', color: 'white', border: '1px solid rgba(255,255,255,0.2)' }}>

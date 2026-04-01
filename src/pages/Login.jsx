@@ -54,12 +54,14 @@ export default function Login({ portalType = '' }) {
   const isMobile = useResponsive(980);
   const isCompact = useResponsive(1366);
   const registrationMessage = location.state?.registrationMessage || '';
+  const bookingSearch = location.search || '';
   const authShellWidth = isCompact ? '960px' : '1060px';
   const authHeroHeight = isMobile ? '340px' : isCompact ? '610px' : '660px';
   const authPanelPadding = isMobile ? '1.5rem' : isCompact ? '1.8rem' : '2.1rem';
 
   const handleLogin = async (e) => {
     e.preventDefault();
+    setError('');
     try {
       const res = await fetch('http://localhost/Hospital/backend/api/auth.php?action=login', {
         method: 'POST',
@@ -67,12 +69,21 @@ export default function Login({ portalType = '' }) {
           'Content-Type': 'application/json'
         },
         credentials: 'include',
-        body: JSON.stringify({ email, password, expected_role: portalType || undefined })
+        body: JSON.stringify({
+          email: email.trim().toLowerCase(),
+          password,
+          expected_role: portalType || undefined,
+        })
       });
       const data = await res.json();
       if (data.success) {
         login(data.user);
-        navigate(config?.redirect || (data.user.role === 'patient' ? '/patient' : data.user.role === 'doctor' ? '/doctor' : '/admin'));
+        const targetPath =
+          data.user.role === 'patient' && bookingSearch
+            ? `/patient${bookingSearch}`
+            : config?.redirect || (data.user.role === 'patient' ? '/patient' : data.user.role === 'doctor' ? '/doctor' : '/admin');
+
+        navigate(targetPath);
       } else {
         setError(data.error);
       }

@@ -295,6 +295,8 @@ p {
 /* Dashboard Sidebar Specific */
 .sidebar {
   width: 280px;
+  max-width: 100%;
+  flex-shrink: 0;
   height: calc(100vh - 40px);
   position: sticky;
   top: 20px;
@@ -319,6 +321,7 @@ p {
 
 .main-content {
   flex: 1;
+  min-width: 0;
   padding: 20px;
 }
 

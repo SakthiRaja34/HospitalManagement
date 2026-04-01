@@ -1,13 +1,31 @@
 import React, { useContext, useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 import { AuthContext } from '../context/AuthContext';
-import { Calendar, User, LogOut, Clock, ClipboardPlus, Phone, MapPin, House, IndianRupee, Video, Building2, BadgeCheck } from 'lucide-react';
+import { Calendar, User, LogOut, Clock, ClipboardPlus, Phone, MapPin, House, IndianRupee, Video, Building2, BadgeCheck, FileText, Download, ReceiptText } from 'lucide-react';
 import useResponsive from '../hooks/useResponsive';
+
+const statusStyles = {
+  pending: { background: 'rgba(245, 158, 11, 0.14)', color: '#B45309' },
+  confirmed: { background: 'rgba(37, 99, 235, 0.14)', color: 'var(--primary-color)' },
+  completed: { background: 'rgba(16, 185, 129, 0.14)', color: 'var(--success)' },
+  cancelled: { background: 'rgba(239, 68, 68, 0.14)', color: 'var(--danger)' },
+};
+
+const statusOrder = ['pending', 'confirmed', 'completed', 'cancelled'];
+const statusLabels = {
+  pending: 'Pending',
+  confirmed: 'Confirmed',
+  completed: 'Completed',
+  cancelled: 'Cancelled',
+};
 
 export default function PatientDashboard() {
   const { user, logout } = useContext(AuthContext);
+  const location = useLocation();
   const isMobile = useResponsive(980);
   const [appointments, setAppointments] = useState([]);
+  const [bills, setBills] = useState([]);
+  const [prescriptions, setPrescriptions] = useState([]);
   const [doctors, setDoctors] = useState([]);
   const [profile, setProfile] = useState(null);
   const [loadingProfile, setLoadingProfile] = useState(true);
@@ -33,8 +51,27 @@ export default function PatientDashboard() {
   useEffect(() => {
     fetchProfile();
     fetchAppointments();
+    fetchBills();
+    fetchPrescriptions();
     fetchDoctors();
   }, []);
+
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    const shouldBook = params.get('book') === '1';
+    const requestedDoctorId = params.get('doctor');
+
+    if (!shouldBook) {
+      return;
+    }
+
+    setBookingMode(true);
+    setEditingProfile(false);
+
+    if (requestedDoctorId) {
+      setDoctorId(requestedDoctorId);
+    }
+  }, [location.search]);
 
   const fetchProfile = () => {
     setLoadingProfile(true);
@@ -86,6 +123,78 @@ export default function PatientDashboard() {
       });
   };
 
+  const fetchBills = () => {
+    fetch('http://localhost/Hospital/backend/api/billing.php', {
+      method: 'GET',
+      credentials: 'include',
+    })
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.success) {
+          setBills(data.data);
+        }
+      });
+  };
+
+  const fetchPrescriptions = () => {
+    fetch('http://localhost/Hospital/backend/api/prescriptions.php', {
+      method: 'GET',
+      credentials: 'include',
+    })
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.success) {
+          setPrescriptions(data.data);
+        }
+      });
+  };
+
+  const downloadPrescriptionPdf = (prescription) => {
+    const popup = window.open('', '_blank', 'width=900,height=700');
+    if (!popup) return;
+
+    const createdAt = new Date(prescription.created_at).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' });
+    const html = `
+      <html>
+        <head>
+          <title>Prescription-${prescription.id}</title>
+          <style>
+            body { font-family: Arial, sans-serif; padding: 32px; color: #0f172a; }
+            h1 { margin-bottom: 8px; }
+            .meta { margin-bottom: 24px; color: #475569; }
+            .block { margin-bottom: 18px; padding: 16px; border: 1px solid #cbd5e1; border-radius: 12px; }
+            .label { font-weight: bold; display: block; margin-bottom: 8px; }
+            pre { white-space: pre-wrap; font-family: Arial, sans-serif; margin: 0; }
+          </style>
+        </head>
+        <body>
+          <h1>MediCare HOS Prescription</h1>
+          <div class="meta">
+            <div>Prescription ID: #${prescription.id}</div>
+            <div>Doctor: ${prescription.doctor_name}</div>
+            <div>Department: ${prescription.department || '-'}</div>
+            <div>Date: ${createdAt}</div>
+            <div>Visit Reason: ${prescription.reason_for_visit || '-'}</div>
+          </div>
+          <div class="block">
+            <span class="label">Medicines</span>
+            <pre>${prescription.medicines || '-'}</pre>
+          </div>
+          <div class="block">
+            <span class="label">Notes</span>
+            <pre>${prescription.notes || '-'}</pre>
+          </div>
+        </body>
+      </html>
+    `;
+
+    popup.document.open();
+    popup.document.write(html);
+    popup.document.close();
+    popup.focus();
+    popup.print();
+  };
+
   const handleBookAppointment = async (e) => {
     e.preventDefault();
     try {
@@ -113,7 +222,7 @@ export default function PatientDashboard() {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({ id, status: 'cancelled' })
+        body: JSON.stringify({ id, action: 'cancel' })
       });
       fetchAppointments();
     } catch(err) { console.error(err); }
@@ -128,6 +237,24 @@ export default function PatientDashboard() {
         body: JSON.stringify({ id, action: 'pay_fee' })
       });
       fetchAppointments();
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const handlePayBill = async (billingId) => {
+    try {
+      const res = await fetch('http://localhost/Hospital/backend/api/billing.php', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ billing_id: billingId })
+      });
+      const data = await res.json();
+      if (data.success) {
+        fetchBills();
+        fetchAppointments();
+      }
     } catch (err) {
       console.error(err);
     }
@@ -171,8 +298,36 @@ export default function PatientDashboard() {
   const profileComplete = Boolean(profile?.profile_complete);
   const showProfileEditor = !profileComplete || editingProfile;
 
+  const getPaymentLabel = (appt) => {
+    if (appt.appointment_mode === 'offline') {
+      return appt.payment_status === 'paid' ? 'Paid at hospital' : 'Pay at hospital';
+    }
+
+    return appt.payment_status === 'paid' ? 'Paid' : 'Pending Payment';
+  };
+
+  const groupedAppointments = statusOrder
+    .map((status) => ({
+      status,
+      label: statusLabels[status],
+      items: appointments.filter((appt) => (appt.status || 'pending') === status),
+    }))
+    .filter((group) => group.items.length > 0);
+
   return (
-    <div style={{ display: 'flex', flexDirection: isMobile ? 'column' : 'row', background: 'var(--bg-light)', minHeight: '100vh' }}>
+    <div
+      style={{
+        display: 'flex',
+        flexDirection: isMobile ? 'column' : 'row',
+        background: 'var(--bg-light)',
+        minHeight: '100vh',
+        gap: isMobile ? 0 : '1.5rem',
+        padding: isMobile ? 0 : '1.25rem',
+        width: '100%',
+        maxWidth: '100%',
+        overflowX: 'hidden',
+      }}
+    >
       <aside className="sidebar">
         <Link to="/" className="text-gradient" style={{ marginBottom: '2rem', textDecoration: 'none', display: 'inline-block', fontSize: '1.8rem', fontWeight: '800' }}>
           MediCare HOS
@@ -242,7 +397,17 @@ export default function PatientDashboard() {
         </button>
       </aside>
 
-      <main className="main-content" style={{ marginLeft: 0, maxWidth: 'calc(100vw - 60px)', width: '100%', flex: 1, minWidth: 0 }}>
+      <main
+        className="main-content"
+        style={{
+          marginLeft: 0,
+          flex: '1 1 0',
+          minWidth: 0,
+          width: 'auto',
+          maxWidth: '100%',
+          overflowX: 'hidden',
+        }}
+      >
         <header style={{ marginBottom: '2rem', background: 'var(--bg-white)', padding: isMobile ? '1.5rem' : '2rem', borderRadius: '16px', boxShadow: 'var(--shadow-sm)', border: '1px solid var(--border-light)', display: 'flex', justifyContent: 'space-between', alignItems: isMobile ? 'flex-start' : 'center', flexDirection: isMobile ? 'column' : 'row', gap: '1rem' }}>
           <div>
             <h1 style={{ color: 'var(--text-dark)', marginBottom: '0.5rem' }}>
@@ -401,7 +566,7 @@ export default function PatientDashboard() {
                 >
                   <option value="" disabled>-- Choose a Doctor --</option>
                   {doctors.map(d => (
-                    <option key={d.doctor_id} value={d.doctor_id}>Dr. {d.name} ({d.specialization})</option>
+                    <option key={d.doctor_id} value={d.doctor_id}>{d.name} ({d.specialization})</option>
                   ))}
                 </select>
               </div>
@@ -516,119 +681,265 @@ export default function PatientDashboard() {
             </div>
 
             <div className="clean-card fade-in" style={{ padding: '2rem' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: isMobile ? 'flex-start' : 'center', flexDirection: isMobile ? 'column' : 'row', gap: '1rem', marginBottom: '1.25rem' }}>
+                <div>
+                  <h2 style={{ marginBottom: '0.4rem' }}>Billing</h2>
+                  <p style={{ margin: 0 }}>Completed appointments automatically create a bill here for patient payment tracking.</p>
+                </div>
+              </div>
+
+              {bills.length === 0 ? (
+                <div style={{ textAlign: 'center', padding: '3rem 0', background: 'var(--bg-alt)', borderRadius: '12px' }}>
+                  <ReceiptText size={44} color="var(--text-muted)" style={{ marginBottom: '0.9rem', opacity: 0.45 }} />
+                  <p style={{ color: 'var(--text-muted)', margin: 0 }}>No billing records available yet.</p>
+                </div>
+              ) : (
+                <div style={{ display: 'grid', gap: '1rem', marginBottom: '1.5rem' }}>
+                  {bills.map((bill) => {
+                    const isPaid = bill.status === 'paid';
+                    return (
+                      <div key={bill.id} style={{ padding: '1.2rem', borderRadius: '18px', background: 'var(--bg-white)', border: '1px solid var(--border-light)' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: isMobile ? 'flex-start' : 'center', flexDirection: isMobile ? 'column' : 'row', gap: '0.9rem', marginBottom: '0.9rem' }}>
+                          <div>
+                            <h3 style={{ marginBottom: '0.25rem', fontSize: '1.05rem' }}>{bill.doctor_name || 'Hospital Billing'}</h3>
+                            <p style={{ margin: 0, fontSize: '13px', color: 'var(--text-muted)' }}>
+                              {bill.department || 'General Department'} | Issued {new Date(bill.issued_date).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })}
+                            </p>
+                          </div>
+                          <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', padding: '7px 14px', borderRadius: '999px', fontSize: '12px', fontWeight: '700', background: isPaid ? statusStyles.completed.background : statusStyles.pending.background, color: isPaid ? statusStyles.completed.color : statusStyles.pending.color }}>
+                            {isPaid ? 'PAID' : 'UNPAID'}
+                          </span>
+                        </div>
+
+                        <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'repeat(2, minmax(0, 1fr))', gap: '0.85rem', marginBottom: '0.9rem' }}>
+                          <div>
+                            <strong style={{ display: 'block', marginBottom: '0.25rem', color: 'var(--text-dark)' }}>Amount</strong>
+                            <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', color: 'var(--text-dark)', fontWeight: '800' }}>
+                              <IndianRupee size={14} /> {Number(bill.amount || 0).toFixed(0)}
+                            </div>
+                          </div>
+                          <div>
+                            <strong style={{ display: 'block', marginBottom: '0.25rem', color: 'var(--text-dark)' }}>Payment Date</strong>
+                            <div style={{ color: 'var(--text-muted)' }}>
+                              {bill.payment_date ? new Date(bill.payment_date).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' }) : 'Pending payment'}
+                            </div>
+                          </div>
+                          <div>
+                            <strong style={{ display: 'block', marginBottom: '0.25rem', color: 'var(--text-dark)' }}>Appointment</strong>
+                            <div style={{ color: 'var(--text-muted)' }}>
+                              {bill.appointment_date ? new Date(bill.appointment_date).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' }) : 'Appointment record unavailable'}
+                            </div>
+                          </div>
+                          <div>
+                            <strong style={{ display: 'block', marginBottom: '0.25rem', color: 'var(--text-dark)' }}>Reason for Visit</strong>
+                            <div style={{ color: 'var(--text-muted)' }}>{bill.reason_for_visit || 'Not specified'}</div>
+                          </div>
+                        </div>
+
+                        {!isPaid && (
+                          <button className="btn btn-primary" onClick={() => handlePayBill(bill.id)}>
+                            Pay Now
+                          </button>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+
               {appointments.length === 0 ? (
                 <div style={{ textAlign: 'center', padding: '4rem 0', background: 'var(--bg-alt)', borderRadius: '12px' }}>
                   <Calendar size={48} color="var(--text-muted)" style={{ marginBottom: '1rem', opacity: 0.5 }} />
                   <p style={{ color: 'var(--text-muted)', margin: 0 }}>No appointments scheduled yet.</p>
                 </div>
               ) : (
-                <div className="table-scroll" style={{ borderRadius: '20px', border: '1px solid var(--border-light)', background: 'var(--bg-white)', overflow: 'hidden' }}>
-                <table style={{ minWidth: '1120px' }}>
-                <thead>
-                  <tr>
-                    <th style={{ whiteSpace: 'nowrap' }}>Requested Date</th>
-                    <th style={{ whiteSpace: 'nowrap' }}>Type</th>
-                    <th style={{ whiteSpace: 'nowrap' }}>Doctor</th>
-                    <th style={{ whiteSpace: 'nowrap' }}>Department</th>
-                    <th style={{ whiteSpace: 'nowrap' }}>Doctor Time</th>
-                    <th style={{ whiteSpace: 'nowrap' }}>Fee</th>
-                    <th style={{ whiteSpace: 'nowrap' }}>Status</th>
-                    <th style={{ whiteSpace: 'nowrap' }}>Action</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {appointments.map(appt => (
-                    <tr key={appt.id}>
-                      <td style={{ minWidth: '200px' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--text-dark)', fontWeight: '500' }}>
-                          <Clock size={16} color="var(--primary-color)" />
-                          <span>{new Date(appt.appointment_date).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' })}</span>
+                <div style={{ display: 'grid', gap: '1.5rem' }}>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.75rem' }}>
+                    {groupedAppointments.map((group) => {
+                      const badgeStyle = statusStyles[group.status] || statusStyles.pending;
+                      return (
+                        <div
+                          key={group.status}
+                          style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '0.55rem',
+                            padding: '0.7rem 1rem',
+                            borderRadius: '14px',
+                            background: badgeStyle.background,
+                            color: badgeStyle.color,
+                            fontWeight: '700',
+                            fontSize: '13px',
+                          }}
+                        >
+                          <span>{group.label}</span>
+                          <span style={{ background: 'rgba(255,255,255,0.7)', borderRadius: '999px', padding: '2px 8px', fontSize: '12px' }}>{group.items.length}</span>
                         </div>
-                      </td>
-                      <td style={{ minWidth: '120px' }}>
-                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', fontWeight: '700', color: appt.appointment_mode === 'online' ? 'var(--secondary-color)' : 'var(--primary-color)', background: appt.appointment_mode === 'online' ? 'rgba(13, 148, 136, 0.10)' : 'rgba(37, 99, 235, 0.08)', padding: '7px 12px', borderRadius: '999px', whiteSpace: 'nowrap' }}>
-                          {appt.appointment_mode === 'online' ? <Video size={14} /> : <Building2 size={14} />}
-                          {(appt.appointment_mode || 'offline').toUpperCase()}
-                        </span>
-                      </td>
-                      <td style={{ minWidth: '160px', fontWeight: '600', color: 'var(--text-dark)', lineHeight: '1.45' }}>Dr. {appt.doctor_name}</td>
-                      <td style={{ minWidth: '170px', color: 'var(--text-dark)', fontWeight: '500' }}>{appt.department || appt.specialization}</td>
-                      <td style={{ minWidth: '190px' }}>
-                        {appt.doctor_confirmed_time ? (
-                          <div style={{ color: 'var(--text-dark)', fontWeight: '500', lineHeight: '1.45' }}>
-                            {new Date(appt.doctor_confirmed_time).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' })}
+                      );
+                    })}
+                  </div>
+
+                  {groupedAppointments.map((group) => {
+                    const badgeStyle = statusStyles[group.status] || statusStyles.pending;
+                    return (
+                      <div key={group.status} style={{ display: 'grid', gap: '0.9rem' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '1rem', flexWrap: 'wrap' }}>
+                          <div>
+                            <h3 style={{ margin: 0, color: 'var(--text-dark)' }}>{group.label} Appointments</h3>
+                            <p style={{ margin: '0.35rem 0 0', color: 'var(--text-muted)', fontSize: '14px' }}>
+                              {group.status === 'completed' ? 'Completed consultations remain visible here with doctor notes and prescriptions.' : `Showing all ${group.label.toLowerCase()} appointments.`}
+                            </p>
                           </div>
-                        ) : (
-                          <span style={{ color: 'var(--text-muted)' }}>Waiting for doctor</span>
-                        )}
-                      </td>
-                      <td style={{ minWidth: '140px' }}>
-                        {appt.appointment_mode === 'online' ? (
-                          <div style={{ display: 'grid', gap: '4px' }}>
-                            <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', fontWeight: '800', color: 'var(--text-dark)', fontSize: '1rem' }}>
-                              <IndianRupee size={14} /> {Number(appt.doctor_fee || 500).toFixed(0)}
-                            </div>
-                            <div style={{ fontSize: '12px', color: appt.payment_status === 'paid' ? 'var(--success)' : '#B45309', fontWeight: '600' }}>
-                              {appt.payment_status === 'paid' ? 'Paid' : 'Pending payment'}
-                            </div>
-                          </div>
-                        ) : (
-                          <span style={{ color: 'var(--text-muted)' }}>Not required</span>
-                        )}
-                      </td>
-                      <td style={{ minWidth: '140px' }}>
-                        <span style={{ 
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          padding: '7px 14px', 
-                          borderRadius: '999px', 
-                          fontSize: '12px',
-                          fontWeight: '600',
-                          background: appt.status === 'confirmed' ? 'rgba(16, 185, 129, 0.1)' : 
-                                      appt.status === 'completed' ? 'var(--primary-color)' :
-                                      appt.status === 'cancelled' ? 'rgba(239, 68, 68, 0.1)' : 'rgba(245, 158, 11, 0.1)',
-                          color: appt.status === 'confirmed' ? 'var(--success)' : 
-                                 appt.status === 'completed' ? 'white' :
-                                 appt.status === 'cancelled' ? 'var(--danger)' : 'var(--warning)'
-                        }}>
-                          {appt.status.toUpperCase()}
-                        </span>
-                        {appt.status === 'confirmed' && appt.appointment_mode === 'online' && appt.payment_status === 'paid' && (
-                          <div style={{ marginTop: '8px', fontSize: '12px', color: 'var(--success)', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                                <BadgeCheck size={13} /> Ready to attend
-                          </div>
-                        )}
-                      </td>
-                      <td style={{ minWidth: '160px' }}>
-                        <div style={{ display: 'grid', gap: '8px', justifyItems: 'start' }}>
-                          {appt.appointment_mode === 'online' && appt.payment_status !== 'paid' && appt.status !== 'confirmed' && (
-                            <div style={{ fontSize: '12px', color: 'var(--text-muted)', lineHeight: '1.45', maxWidth: '150px' }}>
-                              Payment will open after the doctor confirms the appointment time.
-                            </div>
-                          )}
-                          {appt.appointment_mode === 'online' && appt.status === 'confirmed' && appt.payment_status !== 'paid' && (
-                            <button onClick={() => handlePayFee(appt.id)} style={{ border: 'none', background: 'rgba(245, 158, 11, 0.14)', color: '#B45309', cursor: 'pointer', fontSize: '13px', fontWeight: '700', padding: '10px 14px', borderRadius: '12px', minWidth: '104px' }}>
-                              Pay Rs. 500
-                            </button>
-                          )}
-                          {appt.appointment_mode === 'online' && appt.meeting_link && appt.payment_status === 'paid' && (
-                            <a href={appt.meeting_link} target="_blank" rel="noreferrer" style={{ textDecoration: 'none', color: 'var(--secondary-color)', fontSize: '13px', fontWeight: '700', padding: '8px 0' }}>
-                              Join Meeting
-                            </a>
-                          )}
-                          {appt.status !== 'cancelled' && appt.status !== 'completed' && (
-                            <button onClick={() => handleCancel(appt.id)} style={{ border: 'none', background: 'transparent', color: 'var(--danger)', cursor: 'pointer', fontSize: '13px', fontWeight: '600', padding: '4px 0' }}>Cancel</button>
-                          )}
+                          <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', padding: '7px 14px', borderRadius: '999px', fontSize: '12px', fontWeight: '700', background: badgeStyle.background, color: badgeStyle.color }}>
+                            {group.items.length} {group.items.length === 1 ? 'appointment' : 'appointments'}
+                          </span>
                         </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-              </div>
+
+                        <div className="table-scroll" style={{ borderRadius: '20px', border: '1px solid var(--border-light)', background: 'var(--bg-white)', overflowX: 'auto', overflowY: 'hidden' }}>
+                          <table style={{ minWidth: '1120px', width: 'max-content' }}>
+                            <thead>
+                              <tr>
+                                <th style={{ whiteSpace: 'nowrap' }}>Requested Date</th>
+                                <th style={{ whiteSpace: 'nowrap' }}>Type</th>
+                                <th style={{ whiteSpace: 'nowrap' }}>Doctor</th>
+                                <th style={{ whiteSpace: 'nowrap' }}>Department</th>
+                                <th style={{ whiteSpace: 'nowrap' }}>Doctor Time</th>
+                                <th style={{ whiteSpace: 'nowrap' }}>Fee</th>
+                                <th style={{ whiteSpace: 'nowrap' }}>Status</th>
+                                <th style={{ whiteSpace: 'nowrap' }}>Action</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {group.items.map((appt) => (
+                                <tr key={appt.id}>
+                                  <td style={{ minWidth: '200px' }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--text-dark)', fontWeight: '500' }}>
+                                      <Clock size={16} color="var(--primary-color)" />
+                                      <span>{new Date(appt.appointment_date).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' })}</span>
+                                    </div>
+                                  </td>
+                                  <td style={{ minWidth: '120px' }}>
+                                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', fontWeight: '700', color: appt.appointment_mode === 'online' ? 'var(--secondary-color)' : 'var(--primary-color)', background: appt.appointment_mode === 'online' ? 'rgba(13, 148, 136, 0.10)' : 'rgba(37, 99, 235, 0.08)', padding: '7px 12px', borderRadius: '999px', whiteSpace: 'nowrap' }}>
+                                      {appt.appointment_mode === 'online' ? <Video size={14} /> : <Building2 size={14} />}
+                                      {(appt.appointment_mode || 'offline').toUpperCase()}
+                                    </span>
+                                  </td>
+                                  <td style={{ minWidth: '160px', fontWeight: '600', color: 'var(--text-dark)', lineHeight: '1.45' }}>{appt.doctor_name}</td>
+                                  <td style={{ minWidth: '170px', color: 'var(--text-dark)', fontWeight: '500' }}>{appt.department || appt.specialization}</td>
+                                  <td style={{ minWidth: '190px' }}>
+                                    {appt.doctor_confirmed_time ? (
+                                      <div style={{ color: 'var(--text-dark)', fontWeight: '500', lineHeight: '1.45' }}>
+                                        {new Date(appt.doctor_confirmed_time).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' })}
+                                      </div>
+                                    ) : (
+                                      <span style={{ color: 'var(--text-muted)' }}>Waiting for doctor</span>
+                                    )}
+                                  </td>
+                                  <td style={{ minWidth: '160px' }}>
+                                    <div style={{ display: 'grid', gap: '4px' }}>
+                                      <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', fontWeight: '800', color: 'var(--text-dark)', fontSize: '1rem' }}>
+                                        <IndianRupee size={14} /> {Number(appt.doctor_fee || 500).toFixed(0)}
+                                      </div>
+                                      <div style={{ fontSize: '12px', color: appt.payment_status === 'paid' ? 'var(--success)' : appt.appointment_mode === 'offline' ? 'var(--text-muted)' : '#B45309', fontWeight: '600' }}>
+                                        {getPaymentLabel(appt)}
+                                      </div>
+                                    </div>
+                                  </td>
+                                  <td style={{ minWidth: '140px' }}>
+                                    <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', padding: '7px 14px', borderRadius: '999px', fontSize: '12px', fontWeight: '600', background: badgeStyle.background, color: badgeStyle.color }}>
+                                      {(appt.status || 'pending').toUpperCase()}
+                                    </span>
+                                    {appt.status === 'confirmed' && appt.appointment_mode === 'online' && appt.payment_status === 'paid' && (
+                                      <div style={{ marginTop: '8px', fontSize: '12px', color: 'var(--success)', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                        <BadgeCheck size={13} /> Ready to attend
+                                      </div>
+                                    )}
+                                  </td>
+                                  <td style={{ minWidth: '160px' }}>
+                                    <div style={{ display: 'grid', gap: '8px', justifyItems: 'start' }}>
+                                      {appt.appointment_mode === 'online' && appt.payment_status !== 'paid' && appt.status !== 'confirmed' && (
+                                        <div style={{ fontSize: '12px', color: 'var(--text-muted)', lineHeight: '1.45', maxWidth: '150px' }}>
+                                          Payment will open after the doctor confirms the appointment time.
+                                        </div>
+                                      )}
+                                      {!appt.doctor_confirmed_time && appt.status !== 'cancelled' && (
+                                        <div style={{ fontSize: '12px', color: 'var(--text-muted)', lineHeight: '1.45', maxWidth: '150px' }}>
+                                          Waiting for doctor
+                                        </div>
+                                      )}
+                                      {appt.appointment_mode === 'online' && appt.status === 'confirmed' && appt.payment_status !== 'paid' && (
+                                        <button onClick={() => handlePayFee(appt.id)} style={{ border: 'none', background: 'rgba(245, 158, 11, 0.14)', color: '#B45309', cursor: 'pointer', fontSize: '13px', fontWeight: '700', padding: '10px 14px', borderRadius: '12px', minWidth: '104px' }}>
+                                          Pay Rs. 500
+                                        </button>
+                                      )}
+                                      {appt.appointment_mode === 'online' && appt.meeting_link && appt.payment_status === 'paid' && (
+                                        <a href={appt.meeting_link} target="_blank" rel="noreferrer" style={{ textDecoration: 'none', color: 'var(--secondary-color)', fontSize: '13px', fontWeight: '700', padding: '8px 0' }}>
+                                          Join Meeting
+                                        </a>
+                                      )}
+                                      {appt.status === 'completed' && appt.doctor_note && (
+                                        <div style={{ fontSize: '12px', color: 'var(--text-muted)', lineHeight: '1.5', maxWidth: '210px' }}>
+                                          Note: {appt.doctor_note}
+                                        </div>
+                                      )}
+                                      {appt.status !== 'cancelled' && appt.status !== 'completed' && (
+                                        <button onClick={() => handleCancel(appt.id)} style={{ border: 'none', background: 'transparent', color: 'var(--danger)', cursor: 'pointer', fontSize: '13px', fontWeight: '600', padding: '4px 0' }}>Cancel</button>
+                                      )}
+                                    </div>
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
             )}
           </div>
+
+            <div className="clean-card fade-in" style={{ padding: '2rem' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: isMobile ? 'flex-start' : 'center', flexDirection: isMobile ? 'column' : 'row', gap: '1rem', marginBottom: '1.25rem' }}>
+                <div>
+                  <h2 style={{ marginBottom: '0.4rem' }}>Prescriptions</h2>
+                  <p style={{ margin: 0 }}>Completed consultations with prescriptions will appear here.</p>
+                </div>
+              </div>
+
+              {prescriptions.length === 0 ? (
+                <div style={{ textAlign: 'center', padding: '3rem 0', background: 'var(--bg-alt)', borderRadius: '12px' }}>
+                  <FileText size={44} color="var(--text-muted)" style={{ marginBottom: '0.9rem', opacity: 0.45 }} />
+                  <p style={{ color: 'var(--text-muted)', margin: 0 }}>No prescriptions available yet.</p>
+                </div>
+              ) : (
+                <div style={{ display: 'grid', gap: '1rem' }}>
+                  {prescriptions.map((prescription) => (
+                    <div key={prescription.id} style={{ padding: '1.2rem', borderRadius: '18px', background: 'var(--bg-white)', border: '1px solid var(--border-light)' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: isMobile ? 'flex-start' : 'center', flexDirection: isMobile ? 'column' : 'row', gap: '0.9rem', marginBottom: '0.9rem' }}>
+                        <div>
+                          <h3 style={{ marginBottom: '0.25rem', fontSize: '1.05rem' }}>{prescription.doctor_name}</h3>
+                          <p style={{ margin: 0, fontSize: '13px' }}>{prescription.department || 'General Department'} | {new Date(prescription.created_at).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })}</p>
+                        </div>
+                        <button className="btn btn-outline" onClick={() => downloadPrescriptionPdf(prescription)} style={{ whiteSpace: 'nowrap' }}>
+                          <Download size={16} /> Download PDF
+                        </button>
+                      </div>
+                      <div style={{ display: 'grid', gap: '0.85rem' }}>
+                        <div>
+                          <strong style={{ display: 'block', marginBottom: '0.35rem', color: 'var(--text-dark)' }}>Medicines</strong>
+                          <div style={{ color: 'var(--text-muted)', whiteSpace: 'pre-wrap' }}>{prescription.medicines}</div>
+                        </div>
+                        <div>
+                          <strong style={{ display: 'block', marginBottom: '0.35rem', color: 'var(--text-dark)' }}>Notes</strong>
+                          <div style={{ color: 'var(--text-muted)', whiteSpace: 'pre-wrap' }}>{prescription.notes || 'No additional notes.'}</div>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
         )}
       </main>

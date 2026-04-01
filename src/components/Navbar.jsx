@@ -6,6 +6,7 @@ import { Activity, LogOut, LayoutDashboard } from 'lucide-react';
 export default function Navbar() {
   const { user, logout } = useContext(AuthContext);
   const navigate = useNavigate();
+  const bookingPath = user?.role === 'patient' ? '/patient?book=1' : !user ? '/patient-login' : `/${user.role}`;
 
   const handleLogout = () => {
     logout();
@@ -39,7 +40,7 @@ export default function Navbar() {
           {!user ? (
             <>
               <Link to="/login" className="nav-link">Sign In</Link>
-              <Link to="/register" className="btn btn-primary">Book Appointment</Link>
+              <Link to={bookingPath} className="btn btn-primary">Book Appointment</Link>
             </>
           ) : (
             <>

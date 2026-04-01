@@ -21,12 +21,18 @@ export default function Register() {
 
   const handleRegister = async (e) => {
     e.preventDefault();
+    setError('');
     try {
       const res = await fetch('http://localhost/Hospital/backend/api/auth.php?action=register', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({ name, email, password, role: 'patient' })
+        body: JSON.stringify({
+          name: name.trim(),
+          email: email.trim().toLowerCase(),
+          password,
+          role: 'patient',
+        })
       });
       const data = await res.json();
       if (data.success) {

@@ -1,8 +1,10 @@
-import React from 'react';
+import React, { useContext } from 'react';
+import { Link } from 'react-router-dom';
 import Navbar from '../components/Navbar';
 import Footer from '../components/Footer';
 import { HeartPulse, Microscope, Brain, Activity, Droplets, Bone, ArrowRight, ShieldCheck, Clock3, Building2 } from 'lucide-react';
 import useResponsive from '../hooks/useResponsive';
+import { AuthContext } from '../context/AuthContext';
 
 const services = [
   {
@@ -50,7 +52,9 @@ const services = [
 ];
 
 export default function Services() {
+  const { user } = useContext(AuthContext);
   const isMobile = useResponsive(980);
+  const bookingPath = user?.role === 'patient' ? '/patient?book=1' : !user ? '/patient-login' : `/${user.role}`;
 
   return (
     <>
@@ -238,8 +242,8 @@ export default function Services() {
                   </div>
                   <h3 style={{ fontSize: '1.35rem', marginBottom: '0.8rem' }}>{service.title}</h3>
                   <p style={{ marginBottom: '1.2rem', minHeight: '78px' }}>{service.desc}</p>
-                  <a
-                    href="/register"
+                  <Link
+                    to={bookingPath}
                     style={{
                       display: 'inline-flex',
                       alignItems: 'center',
@@ -251,7 +255,7 @@ export default function Services() {
                   >
                     Book consultation
                     <ArrowRight size={16} />
-                  </a>
+                  </Link>
                 </article>
               );
             })}
@@ -309,13 +313,13 @@ export default function Services() {
               <p style={{ color: 'rgba(255,255,255,0.86)', marginBottom: '1.4rem' }}>
                 Create your account and book directly through the patient portal.
               </p>
-              <a
-                href="/register"
+              <Link
+                to={bookingPath}
                 className="btn"
                 style={{ background: 'white', color: 'var(--primary-color)', width: '100%' }}
               >
-                Create Account
-              </a>
+                {user?.role === 'patient' ? 'Open Booking' : !user ? 'Patient Login' : 'Open Dashboard'}
+              </Link>
             </div>
           </section>
         </div>
