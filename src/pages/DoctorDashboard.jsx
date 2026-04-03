@@ -1,7 +1,7 @@
-import React, { useContext, useEffect, useState } from 'react';
+import React, { useContext, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { AuthContext } from '../context/AuthContext';
-import { Calendar, User, LogOut, CheckCircle, FileText, Phone, UserCircle2, Video, Building2, IndianRupee, BadgeCheck, Activity, ClipboardPlus, House } from 'lucide-react';
+import { Calendar, User, LogOut, CheckCircle, FileText, Phone, UserCircle2, Video, Building2, IndianRupee, BadgeCheck, Activity, ClipboardPlus, House, LayoutDashboard, Users, ChevronRight, Clock3, Stethoscope, ArrowUpRight, ArrowDownRight } from 'lucide-react';
 import useResponsive from '../hooks/useResponsive';
 import { specializationDepartmentMap, specializationOptions } from '../data/doctorOptions';
 
@@ -35,6 +35,28 @@ const formatDateTimeForApi = (value) => {
 
 const resolveConfirmationTime = (confirmedValue, fallbackValue) => {
   return formatDateTimeForApi(confirmedValue) || formatDateTimeForApi(fallbackValue);
+};
+
+const Sparkline = ({ points, stroke }) => {
+  const chartWidth = 120;
+  const chartHeight = 40;
+  const normalized = points.length ? points : [1, 1, 1, 1];
+  const max = Math.max(...normalized);
+  const min = Math.min(...normalized);
+  const range = Math.max(max - min, 1);
+  const path = normalized
+    .map((point, index) => {
+      const x = (index / Math.max(normalized.length - 1, 1)) * chartWidth;
+      const y = chartHeight - ((point - min) / range) * (chartHeight - 6) - 3;
+      return `${index === 0 ? 'M' : 'L'} ${x.toFixed(2)} ${y.toFixed(2)}`;
+    })
+    .join(' ');
+
+  return (
+    <svg width={chartWidth} height={chartHeight} viewBox={`0 0 ${chartWidth} ${chartHeight}`} aria-hidden="true">
+      <path d={path} fill="none" stroke={stroke} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
 };
 
 export default function DoctorDashboard() {
@@ -134,7 +156,8 @@ export default function DoctorDashboard() {
       }
       fetchAppointments();
       return true;
-    } catch (err) {
+    } catch (error) {
+      console.error('Error updating appointment:', error);
       setScheduleError('Unable to update the appointment right now.');
       setScheduleMessage('');
       return false;
@@ -235,7 +258,8 @@ export default function DoctorDashboard() {
       setScheduleError('');
       setScheduleMessage('Prescription added successfully.');
       fetchPatientPrescriptions(selectedAppt.patient_id);
-    } catch (err) {
+    } catch (error) {
+      console.error('Error adding prescription:', error);
       setScheduleError('Unable to save prescription right now.');
       setScheduleMessage('');
     }
@@ -302,7 +326,8 @@ export default function DoctorDashboard() {
 
       setProfileMessage('Doctor profile saved successfully. Patients can now find you more easily by specialty and department.');
       fetchDoctorProfile();
-    } catch (err) {
+    } catch (error) {
+      console.error('Error saving profile:', error);
       setProfileError('Unable to save doctor profile.');
     } finally {
       setSavingProfile(false);
@@ -310,20 +335,31 @@ export default function DoctorDashboard() {
   };
 
   const profileComplete = Boolean(profile?.profile_complete);
+  const upcomingAppointments = useMemo(
+    () => appointments.filter((appt) => appt.status !== 'completed' && appt.status !== 'cancelled'),
+    [appointments]
+  );
+  const todayLabel = new Date().toLocaleDateString([], { weekday: 'long', month: 'short', day: 'numeric' });
 
   return (
-    <div style={{ display: 'flex', flexDirection: isMobile ? 'column' : 'row', background: 'var(--bg-light)', minHeight: '100vh', gap: isMobile ? 0 : '1.5rem', padding: isMobile ? 0 : '1.25rem', width: '100%', maxWidth: '100%', overflowX: 'hidden' }}>
-      <aside className="sidebar">
-        <Link to="/" className="text-gradient" style={{ marginBottom: '2rem', textDecoration: 'none', display: 'inline-block', fontSize: '1.8rem', fontWeight: '800' }}>
-          MediCare HOS
+    <div style={{ display: 'flex', flexDirection: isMobile ? 'column' : 'row', background: 'linear-gradient(135deg, #EDF5F7 0%, #F8FBFF 52%, #EEF4F8 100%)', minHeight: '100vh', gap: isMobile ? 0 : '1.5rem', padding: isMobile ? '0.75rem' : '1.25rem', width: '100%', maxWidth: '100%', overflowX: 'hidden' }}>
+      <aside className="sidebar" style={{ width: isMobile ? '100%' : '290px', height: isMobile ? 'auto' : 'calc(100vh - 40px)', background: 'linear-gradient(180deg, rgba(255,255,255,0.97), rgba(248,250,252,0.95))', borderRadius: '28px', padding: isMobile ? '1.35rem' : '1.75rem' }}>
+        <Link to="/" className="text-gradient" style={{ marginBottom: '1.5rem', textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: '0.8rem', fontSize: '1.45rem', fontWeight: '800' }}>
+          <span style={{ width: '52px', height: '52px', borderRadius: '18px', background: 'linear-gradient(135deg, rgba(37,99,235,0.16), rgba(13,148,136,0.18))', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>
+            <Stethoscope size={24} color="var(--secondary-color)" />
+          </span>
+          <span>
+            MediCare
+            <span style={{ display: 'block', fontSize: '0.72rem', letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--text-muted)', fontWeight: 700 }}>For Doctors</span>
+          </span>
         </Link>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '2rem', padding: '10px', background: 'var(--bg-alt)', borderRadius: '12px' }}>
-          <div style={{ padding: '8px', background: 'var(--bg-white)', borderRadius: '50%', boxShadow: 'var(--shadow-sm)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '1.5rem', padding: '12px', background: 'linear-gradient(180deg, rgba(239,246,255,0.95), rgba(255,255,255,0.88))', borderRadius: '18px', border: '1px solid var(--border-light)' }}>
+          <div style={{ width: '52px', height: '52px', background: 'var(--bg-white)', borderRadius: '18px', boxShadow: 'var(--shadow-sm)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             <User size={24} color="var(--primary-color)"/>
           </div>
           <div>
-            <h4 style={{ color: 'var(--text-dark)', margin: 0 }}>{user?.name}</h4>
-            <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>Doctor Portal</span>
+            <h4 style={{ color: 'var(--text-dark)', margin: 0, fontSize: '0.98rem' }}>Dr. {user?.name}</h4>
+            <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>{todayLabel}</span>
           </div>
         </div>
         <nav style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '10px' }}>
@@ -344,23 +380,32 @@ export default function DoctorDashboard() {
           </Link>
           <button
             onClick={() => setActiveView('schedule')}
-            style={{ textDecoration: 'none', padding: '12px', background: activeView === 'schedule' ? 'var(--bg-alt)' : 'transparent', borderRadius: '8px', display: 'flex', gap: '10px', alignItems: 'center', fontWeight: '500', color: activeView === 'schedule' ? 'var(--primary-color)' : 'var(--text-muted)', border: 'none', cursor: 'pointer' }}
+            style={{ textDecoration: 'none', padding: '12px 14px', background: activeView === 'schedule' ? 'linear-gradient(180deg, rgba(37,99,235,0.12), rgba(37,99,235,0.06))' : 'transparent', borderRadius: '14px', display: 'flex', gap: '10px', alignItems: 'center', justifyContent: 'space-between', fontWeight: '600', color: activeView === 'schedule' ? 'var(--primary-color)' : 'var(--text-muted)', border: 'none', cursor: 'pointer' }}
           >
-            <Calendar size={18} /> My Schedule
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: '10px' }}>
+              <LayoutDashboard size={18} /> Dashboard
+            </span>
+            <span style={{ fontSize: '12px', padding: '4px 8px', borderRadius: '999px', background: 'rgba(37,99,235,0.10)', color: 'var(--primary-color)' }}>
+              {upcomingAppointments.length}
+            </span>
           </button>
           <button
             onClick={() => setActiveView('profile')}
-            style={{ textDecoration: 'none', padding: '12px', background: activeView === 'profile' ? 'rgba(13, 148, 136, 0.12)' : 'transparent', borderRadius: '8px', display: 'flex', gap: '10px', alignItems: 'center', fontWeight: '500', color: activeView === 'profile' ? 'var(--secondary-color)' : 'var(--text-muted)', border: 'none', cursor: 'pointer' }}
+            style={{ textDecoration: 'none', padding: '12px 14px', background: activeView === 'profile' ? 'rgba(13, 148, 136, 0.12)' : 'transparent', borderRadius: '14px', display: 'flex', gap: '10px', alignItems: 'center', fontWeight: '600', color: activeView === 'profile' ? 'var(--secondary-color)' : 'var(--text-muted)', border: 'none', cursor: 'pointer' }}
           >
             <ClipboardPlus size={18} /> Doctor Profile
           </button>
           {!profileComplete && !profileLoading && (
-            <div style={{ padding: '12px', borderRadius: '12px', background: 'rgba(245, 158, 11, 0.12)', color: '#B45309', fontSize: '13px', fontWeight: '600', lineHeight: '1.5' }}>
+            <div style={{ padding: '13px 14px', borderRadius: '16px', background: 'rgba(245, 158, 11, 0.12)', color: '#B45309', fontSize: '13px', fontWeight: '600', lineHeight: '1.5' }}>
               Complete your doctor profile so patients can search and find you easily.
             </div>
           )}
         </nav>
-        <button className="btn" onClick={logout} style={{ background: 'rgba(239, 68, 68, 0.1)', color: 'var(--danger)', border: 'none', width: '100%' }}>
+        <div style={{ marginTop: '1rem', paddingTop: '1rem', borderTop: '1px solid var(--border-light)', color: 'var(--text-muted)', fontSize: '13px' }}>
+          <div style={{ fontWeight: 700, color: 'var(--text-dark)', marginBottom: '0.2rem' }}>Support</div>
+          <div>Keep consultations updated and finish each appointment from one place.</div>
+        </div>
+        <button className="btn" onClick={logout} style={{ background: 'rgba(239, 68, 68, 0.1)', color: 'var(--danger)', border: 'none', width: '100%', marginTop: '0.5rem' }}>
           <LogOut size={16} /> Logout
         </button>
       </aside>

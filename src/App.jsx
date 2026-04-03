@@ -5,6 +5,7 @@ import Home from './pages/Home';
 import Login from './pages/Login';
 import Register from './pages/Register';
 import DoctorRegister from './pages/DoctorRegister';
+import ForgotPassword from './pages/ForgotPassword';
 import PatientDashboard from './pages/PatientDashboard';
 import DoctorDashboard from './pages/DoctorDashboard';
 import AdminDashboard from './pages/AdminDashboard';
@@ -21,6 +22,7 @@ const routeTitles = [
   { match: (path) => path === '/admin-login', title: 'MediCare HOS | Admin Login' },
   { match: (path) => path === '/register', title: 'MediCare HOS | Patient Register' },
   { match: (path) => path === '/doctor-register', title: 'MediCare HOS | Doctor Register' },
+  { match: (path) => path === '/forgot-password', title: 'MediCare HOS | Forgot Password' },
   { match: (path) => path === '/doctors', title: 'MediCare HOS | Doctors' },
   { match: (path) => path === '/services', title: 'MediCare HOS | Services' },
   { match: (path) => path === '/about', title: 'MediCare HOS | About' },
@@ -73,6 +75,7 @@ function App() {
         <Route path="/admin-login" element={<Login portalType="admin" />} />
         <Route path="/register" element={<Register />} />
         <Route path="/doctor-register" element={<DoctorRegister />} />
+        <Route path="/forgot-password" element={<ForgotPassword />} />
         <Route path="/doctors" element={<DoctorsList />} />
         <Route path="/services" element={<Services />} />
         <Route path="/about" element={<About />} />

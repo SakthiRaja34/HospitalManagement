@@ -8,7 +8,12 @@ export default function AdminDashboard() {
   const isMobile = useResponsive(980);
   const [activeTab, setActiveTab] = useState('overview');
   const [stats, setStats] = useState({ doctors: 0, patients: 0, appointments: 0 });
+  const [patients, setPatients] = useState([]);
+  const [doctors, setDoctors] = useState([]);
+  const [appointmentsOverview, setAppointmentsOverview] = useState([]);
+  const [appointmentsSummary, setAppointmentsSummary] = useState({ total: 0, pending: 0, confirmed: 0, completed: 0, cancelled: 0 });
   const [pendingDoctors, setPendingDoctors] = useState([]);
+  const [showApprovedDoctors, setShowApprovedDoctors] = useState(false);
   const [reportFilters, setReportFilters] = useState({
     date_from: new Date(new Date().setDate(1)).toISOString().slice(0, 10),
     date_to: new Date().toISOString().slice(0, 10),
@@ -16,23 +21,26 @@ export default function AdminDashboard() {
   const [attendanceReport, setAttendanceReport] = useState([]);
   const [reportSummary, setReportSummary] = useState(null);
 
-  useEffect(() => {
-    fetchStats();
-    fetchPendingDoctors();
-  }, []);
-
   const fetchStats = async () => {
     try {
-      const [docs, pts, appts] = await Promise.all([
+      const [docs, pts, appts, apptOverview] = await Promise.all([
         fetch('http://localhost/Hospital/backend/api/users.php?action=doctors', { credentials: 'include' }).then(r => r.json()),
         fetch('http://localhost/Hospital/backend/api/users.php?action=patients', { credentials: 'include' }).then(r => r.json()),
-        fetch('http://localhost/Hospital/backend/api/appointments.php', { credentials: 'include' }).then(r => r.json())
+        fetch('http://localhost/Hospital/backend/api/appointments.php', { credentials: 'include' }).then(r => r.json()),
+        fetch('http://localhost/Hospital/backend/api/admin.php?action=appointments_overview', { credentials: 'include' }).then(r => r.json()),
       ]);
+
       setStats({
         doctors: docs.data?.length || 0,
         patients: pts.data?.length || 0,
         appointments: appts.data?.length || 0
       });
+      setDoctors(docs.data || []);
+      setPatients(pts.data || []);
+      if (apptOverview.success) {
+        setAppointmentsOverview(apptOverview.data || []);
+        setAppointmentsSummary(apptOverview.summary || { total: 0, pending: 0, confirmed: 0, completed: 0, cancelled: 0 });
+      }
     } catch (err) { console.error(err); }
   };
 
@@ -45,6 +53,12 @@ export default function AdminDashboard() {
       }
     } catch (err) { console.error(err); }
   };
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    fetchStats();
+    fetchPendingDoctors();
+  }, []);
 
   const handleApprove = async (id, decision) => {
     try {
@@ -129,10 +143,22 @@ export default function AdminDashboard() {
   };
 
   return (
-    <div style={{ display: 'flex', flexDirection: isMobile ? 'column' : 'row', background: 'var(--bg-light)', minHeight: '100vh' }}>
+    <div style={{ display: 'flex', flexDirection: isMobile ? 'column' : 'row', background: 'var(--bg-light)', minHeight: '100vh', gap: isMobile ? '1rem' : '1.5rem', padding: isMobile ? '1rem' : '1.5rem' }}>
       {/* Sidebar */}
-      <aside className="sidebar">
-        <h2 className="text-gradient" style={{ marginBottom: '2rem' }}>MediCare HOS</h2>
+      <aside className="sidebar" style={{
+        width: isMobile ? '100%' : '280px',
+        flexShrink: 0,
+        background: 'var(--bg-white)',
+        border: '1px solid var(--border-light)',
+        borderRadius: '24px',
+        padding: isMobile ? '1rem' : '1.5rem',
+        boxShadow: 'var(--shadow-sm)',
+        position: isMobile ? 'relative' : 'sticky',
+        top: isMobile ? 'auto' : '1rem',
+        alignSelf: 'flex-start',
+        height: isMobile ? 'auto' : 'calc(100vh - 2rem)'
+      }}>
+        <h2 className="text-gradient" style={{ marginBottom: '1.8rem', fontSize: '1.5rem' }}>MediCare HOS</h2>
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '2rem', padding: '10px', background: 'var(--bg-alt)', borderRadius: '12px' }}>
           <div style={{ padding: '8px', background: 'var(--bg-white)', borderRadius: '50%', boxShadow: 'var(--shadow-sm)' }}>
             <Settings size={24} color="var(--primary-color)"/>
@@ -184,9 +210,9 @@ export default function AdminDashboard() {
             <FileSpreadsheet size={18} /> Attendance Report
           </button>
 
-          <a href="#" style={{ textDecoration: 'none', padding: '12px', borderRadius: '8px', display: 'flex', gap: '10px', alignItems: 'center', color: 'var(--text-muted)', fontWeight: '500' }}>
+          <button onClick={() => setActiveTab('user-management')} style={{ textDecoration: 'none', padding: '12px', borderRadius: '8px', display: 'flex', gap: '10px', alignItems: 'center', background: activeTab === 'user-management' ? 'var(--bg-alt)' : 'transparent', color: activeTab === 'user-management' ? 'var(--primary-color)' : 'var(--text-muted)', fontWeight: '500', border: 'none', cursor: 'pointer' }}>
             <Users size={18} /> User Management
-          </a>
+          </button>
         </nav>
         
         <button className="btn" onClick={logout} style={{ background: 'rgba(239, 68, 68, 0.1)', color: 'var(--danger)', border: 'none', width: '100%' }}>
@@ -195,61 +221,188 @@ export default function AdminDashboard() {
       </aside>
 
       {/* Main Content */}
-      <main className="main-content" style={{ marginLeft: isMobile ? 0 : '320px', maxWidth: '1200px', width: '100%' }}>
-        <header style={{ marginBottom: '2rem', background: 'var(--bg-white)', padding: '2rem', borderRadius: '16px', boxShadow: 'var(--shadow-sm)', border: '1px solid var(--border-light)' }}>
+      <main className="main-content" style={{
+        flex: 1,
+        maxWidth: 'calc(100% - 320px)',
+        width: '100%',
+        background: 'transparent',
+        overflowX: 'hidden'
+      }}>
+        <header style={{ marginBottom: '2rem', background: 'var(--bg-white)', padding: '1.8rem', borderRadius: '16px', boxShadow: 'var(--shadow-sm)', border: '1px solid var(--border-light)' }}>
           <h1 style={{ color: 'var(--text-dark)', marginBottom: '0.5rem' }}>
-            {activeTab === 'overview' ? 'Hospital Overview' : activeTab === 'approvals' ? 'Pending Approvals' : 'Attendance Report'}
+            {activeTab === 'overview'
+              ? 'Hospital Overview'
+              : activeTab === 'approvals'
+                ? 'Pending Approvals'
+                : activeTab === 'patients'
+                  ? 'Patients'
+                  : activeTab === 'user-management'
+                    ? 'User Management'
+                    : 'Attendance Report'}
           </h1>
           <p style={{ color: 'var(--text-muted)', margin: 0 }}>
             {activeTab === 'overview'
               ? 'Real-time statistics of MediCare HOS operations.'
               : activeTab === 'approvals'
                 ? 'Review and verify new doctor registrations before system access is granted.'
-                : 'Generate a detailed report of attended patients between selected dates.'}
+                : activeTab === 'patients'
+                  ? 'Browse all registered patients.'
+                  : activeTab === 'user-management'
+                    ? 'Browse registered patients and doctors.'
+                    : 'Generate a detailed report of attended patients between selected dates.'}
           </p>
         </header>
 
         {activeTab === 'overview' && (
-          <div className="grid-cols-3">
-            <div className="clean-card fade-in" style={{ padding: '2rem', display: 'flex', alignItems: 'center', gap: '20px' }}>
-              <div style={{ background: 'var(--bg-alt)', padding: '20px', borderRadius: '16px' }}>
-                <Users size={32} color="var(--primary-color)" />
+          <>
+            <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'repeat(3, minmax(0, 1fr))', gap: '1rem' }}>
+              <button
+                type="button"
+                onClick={() => setActiveTab('patients')}
+                className="clean-card fade-in"
+                style={{ padding: '1.6rem', display: 'flex', alignItems: 'center', gap: '18px', textAlign: 'left', cursor: 'pointer', borderRadius: '16px', border: activeTab === 'patients' ? '1px solid var(--primary-color)' : '1px solid var(--border-strong)', background: 'var(--bg-white)' }}
+              >
+                <div style={{ background: 'var(--bg-alt)', padding: '20px', borderRadius: '16px' }}>
+                  <Users size={32} color="var(--primary-color)" />
+                </div>
+                <div>
+                  <p style={{ color: 'var(--text-muted)', margin: 0, fontWeight: '500', textTransform: 'uppercase', fontSize: '12px', letterSpacing: '1px' }}>Patients</p>
+                  <h2 style={{ fontSize: '2rem', margin: 0 }}>{stats.patients}</h2>
+                </div>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setActiveTab('approvals')}
+                className="clean-card fade-in"
+                style={{ padding: '1.6rem', display: 'flex', alignItems: 'center', gap: '18px', textAlign: 'left', cursor: 'pointer', borderRadius: '16px', border: activeTab === 'approvals' ? '1px solid var(--primary-color)' : '1px solid var(--border-strong)', background: 'var(--bg-white)' }}
+              >
+                <div style={{ background: 'rgba(13, 148, 136, 0.1)', padding: '20px', borderRadius: '16px' }}>
+                  <User size={32} color="var(--secondary-color)" />
+                </div>
+                <div>
+                  <p style={{ color: 'var(--text-muted)', margin: 0, fontWeight: '500', textTransform: 'uppercase', fontSize: '12px', letterSpacing: '1px' }}>Doctors</p>
+                  <h2 style={{ fontSize: '2rem', margin: 0 }}>{stats.doctors}</h2>
+                </div>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setActiveTab('reports')}
+                className="clean-card fade-in"
+                style={{ padding: '1.6rem', display: 'flex', alignItems: 'center', gap: '18px', textAlign: 'left', cursor: 'pointer', borderRadius: '16px', border: activeTab === 'reports' ? '1px solid var(--primary-color)' : '1px solid var(--border-strong)', background: 'var(--bg-white)' }}
+              >
+                <div style={{ background: 'rgba(16, 185, 129, 0.1)', padding: '20px', borderRadius: '16px' }}>
+                  <Activity size={32} color="var(--success)" />
+                </div>
+                <div>
+                  <p style={{ color: 'var(--text-muted)', margin: 0, fontWeight: '500', textTransform: 'uppercase', fontSize: '12px', letterSpacing: '1px' }}>Appointments</p>
+                  <h2 style={{ fontSize: '2rem', margin: 0 }}>{stats.appointments}</h2>
+                </div>
+              </button>
+            </div>
+
+            <div style={{ marginTop: '1rem', display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'repeat(4, minmax(0, 1fr))', gap: '1rem' }}>
+              <div className="clean-card" style={{ padding: '1rem' }}>
+                <p style={{ margin: 0, fontSize: '12px', fontWeight: 600, color: 'var(--text-muted)' }}>Total Appointments</p>
+                <h3 style={{ margin: '0.3rem 0 0' }}>{appointmentsSummary.total}</h3>
               </div>
-              <div>
-                <p style={{ color: 'var(--text-muted)', margin: 0, fontWeight: '500', textTransform: 'uppercase', fontSize: '12px', letterSpacing: '1px' }}>Patients</p>
-                <h2 style={{ fontSize: '2rem', margin: 0 }}>{stats.patients}</h2>
+              <div className="clean-card" style={{ padding: '1rem' }}>
+                <p style={{ margin: 0, fontSize: '12px', fontWeight: 600, color: 'var(--text-muted)' }}>Pending</p>
+                <h3 style={{ margin: '0.3rem 0 0' }}>{appointmentsSummary.pending}</h3>
+              </div>
+              <div className="clean-card" style={{ padding: '1rem' }}>
+                <p style={{ margin: 0, fontSize: '12px', fontWeight: 600, color: 'var(--text-muted)' }}>Confirmed</p>
+                <h3 style={{ margin: '0.3rem 0 0' }}>{appointmentsSummary.confirmed}</h3>
+              </div>
+              <div className="clean-card" style={{ padding: '1rem' }}>
+                <p style={{ margin: 0, fontSize: '12px', fontWeight: 600, color: 'var(--text-muted)' }}>Completed</p>
+                <h3 style={{ margin: '0.3rem 0 0' }}>{appointmentsSummary.completed}</h3>
               </div>
             </div>
 
-            <div className="clean-card fade-in" style={{ padding: '2rem', display: 'flex', alignItems: 'center', gap: '20px', animationDelay: '0.1s' }}>
-              <div style={{ background: 'rgba(13, 148, 136, 0.1)', padding: '20px', borderRadius: '16px' }}>
-                <User size={32} color="var(--secondary-color)" />
-              </div>
-              <div>
-                <p style={{ color: 'var(--text-muted)', margin: 0, fontWeight: '500', textTransform: 'uppercase', fontSize: '12px', letterSpacing: '1px' }}>Doctors</p>
-                <h2 style={{ fontSize: '2rem', margin: 0 }}>{stats.doctors}</h2>
+            <div style={{ marginTop: '1rem' }}>
+              <div className="clean-card" style={{ padding: '1rem' }}>
+                <h3 style={{ margin: '0 0 0.8rem', fontSize: '1rem' }}>Recent Appointment Activity</h3>
+                <div className="table-scroll">
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>Patient</th>
+                        <th>Doctor</th>
+                        <th>Date</th>
+                        <th>Status</th>
+                        <th>Mode</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {appointmentsOverview.slice(0, 10).map((appt) => (
+                        <tr key={appt.id}>
+                          <td style={{ fontWeight: '500' }}>{appt.patient_name}</td>
+                          <td style={{ color: 'var(--text-muted)' }}>{appt.doctor_name}</td>
+                          <td>{new Date(appt.appointment_date).toLocaleString()}</td>
+                          <td><span className={`status-chip ${appt.status || 'pending'}`}>{appt.status || 'pending'}</span></td>
+                          <td><span className="status-chip" style={{ background: 'rgba(37, 99, 235, 0.08)', color: '#1d4ed8' }}>{appt.appointment_mode || 'offline'}</span></td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
               </div>
             </div>
-
-            <div className="clean-card fade-in" style={{ padding: '2rem', display: 'flex', alignItems: 'center', gap: '20px', animationDelay: '0.2s' }}>
-              <div style={{ background: 'rgba(16, 185, 129, 0.1)', padding: '20px', borderRadius: '16px' }}>
-                <Activity size={32} color="var(--success)" />
-              </div>
-              <div>
-                <p style={{ color: 'var(--text-muted)', margin: 0, fontWeight: '500', textTransform: 'uppercase', fontSize: '12px', letterSpacing: '1px' }}>Appointments</p>
-                <h2 style={{ fontSize: '2rem', margin: 0 }}>{stats.appointments}</h2>
-              </div>
-            </div>
-          </div>
+          </>
         )}
 
         {activeTab === 'approvals' && (
           <div className="clean-card fade-in" style={{ padding: '2rem' }}>
             {pendingDoctors.length === 0 ? (
-              <div style={{ textAlign: 'center', padding: '4rem 0' }}>
-                <UserCheck size={48} color="var(--text-muted)" style={{ opacity: 0.5, marginBottom: '1rem' }} />
-                <p style={{ color: 'var(--text-muted)', margin: 0 }}>No pending doctor registrations requiring approval at this time.</p>
-              </div>
+              <>
+                <div style={{ textAlign: 'center', padding: '3rem 0' }}>
+                  <UserCheck size={48} color="var(--text-muted)" style={{ opacity: 0.5, marginBottom: '1rem' }} />
+                  <p style={{ color: 'var(--text-muted)', margin: '0.4rem 0 0.6rem' }}>No pending doctor registrations requiring approval at this time.</p>
+                  <p style={{ color: 'var(--text-muted)', margin: '0 0 0.75rem' }}>Click below to view current approved doctors.</p>
+                  <button
+                    className="btn btn-outline"
+                    onClick={() => setShowApprovedDoctors((current) => !current)}
+                    style={{ padding: '0.6rem 1rem', borderRadius: '12px', border: '1px solid var(--border-strong)' }}
+                  >
+                    {showApprovedDoctors ? 'Hide approved doctors' : 'Show approved doctors'}
+                  </button>
+                </div>
+
+                {showApprovedDoctors && (
+                  <div className="table-scroll" style={{ marginTop: '1rem' }}>
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>Doctor Name</th>
+                        <th>Email</th>
+                        <th>Specialization</th>
+                        <th>Department</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {doctors.length === 0 ? (
+                        <tr>
+                          <td colSpan={4} style={{ textAlign: 'center', padding: '1rem', color: 'var(--text-muted)' }}>
+                            No approved doctors found in the system.
+                          </td>
+                        </tr>
+                      ) : (
+                        doctors.map((doc) => (
+                          <tr key={doc.doctor_id}>
+                            <td style={{ fontWeight: '500' }}>{doc.name}</td>
+                            <td style={{ color: 'var(--text-muted)' }}>{doc.email}</td>
+                            <td>{doc.specialization || 'N/A'}</td>
+                            <td>{doc.department || 'N/A'}</td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+                )}
+              </>
             ) : (
               <div className="table-scroll">
               <table>
@@ -285,6 +438,101 @@ export default function AdminDashboard() {
               </table>
               </div>
             )}
+          </div>
+        )}
+
+        {activeTab === 'user-management' && (
+          <div style={{ display: 'grid', gap: '1rem' }}>
+            <div className="clean-card fade-in" style={{ padding: '1.5rem' }}>
+              <h3 style={{ margin: 0, marginBottom: '0.75rem', color: 'var(--text-dark)' }}>Recent Patients</h3>
+              <div className="table-scroll">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Name</th>
+                      <th>Email</th>
+                      <th>Gender</th>
+                      <th>DOB</th>
+                      <th>Phone</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {patients.slice(0, 8).map((patient) => (
+                      <tr key={patient.patient_id}>
+                        <td style={{ fontWeight: '500' }}>{patient.name}</td>
+                        <td style={{ color: 'var(--text-muted)' }}>{patient.email}</td>
+                        <td>{patient.gender || 'N/A'}</td>
+                        <td>{patient.date_of_birth || 'N/A'}</td>
+                        <td>{patient.phone_number || 'N/A'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <div className="clean-card fade-in" style={{ padding: '1.5rem' }}>
+              <h3 style={{ margin: 0, marginBottom: '0.75rem', color: 'var(--text-dark)' }}>Doctors List</h3>
+              <div className="table-scroll">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Name</th>
+                      <th>Email</th>
+                      <th>Department</th>
+                      <th>Specialization</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {doctors.slice(0, 8).map((doc) => (
+                      <tr key={doc.doctor_id}>
+                        <td style={{ fontWeight: '500' }}>{doc.name}</td>
+                        <td style={{ color: 'var(--text-muted)' }}>{doc.email}</td>
+                        <td>{doc.department || 'N/A'}</td>
+                        <td>{doc.specialization || 'N/A'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {activeTab === 'patients' && (
+          <div className="clean-card fade-in" style={{ padding: '1.5rem' }}>
+            <h3 style={{ margin: 0, marginBottom: '0.75rem', color: 'var(--text-dark)' }}>Patients</h3>
+            <div className="table-scroll">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Name</th>
+                    <th>Email</th>
+                    <th>Gender</th>
+                    <th>DOB</th>
+                    <th>Phone</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {patients.map((patient) => (
+                    <tr key={patient.patient_id}>
+                      <td style={{ fontWeight: '500' }}>{patient.name}</td>
+                      <td style={{ color: 'var(--text-muted)' }}>{patient.email}</td>
+                      <td>{patient.gender || 'N/A'}</td>
+                      <td>{patient.date_of_birth || 'N/A'}</td>
+                      <td>{patient.phone_number || 'N/A'}</td>
+                    </tr>
+                  ))}
+                  {patients.length === 0 && (
+                    <tr>
+                      <td colSpan={5} style={{ textAlign: 'center', padding: '1rem', color: 'var(--text-muted)' }}>
+                        No patients found.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
           </div>
         )}
 

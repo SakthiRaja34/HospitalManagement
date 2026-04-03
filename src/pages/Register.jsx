@@ -46,7 +46,8 @@ export default function Register() {
       } else {
         setError(data.error);
       }
-    } catch (err) {
+    } catch (error) {
+      console.error('Error registering:', error);
       setError('Registration failed');
     }
   };

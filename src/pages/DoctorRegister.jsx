@@ -51,7 +51,8 @@ export default function DoctorRegister() {
       } else {
         setError(data.error || 'Registration failed');
       }
-    } catch (err) {
+    } catch (error) {
+      console.error('Error registering doctor:', error);
       setError('Registration failed');
     }
   };

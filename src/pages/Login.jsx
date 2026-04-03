@@ -87,7 +87,8 @@ export default function Login({ portalType = '' }) {
       } else {
         setError(data.error);
       }
-    } catch (err) {
+    } catch (error) {
+      console.error('Login error:', error);
       setError('Network error or server unavailable');
     }
   };
@@ -321,6 +322,12 @@ export default function Login({ portalType = '' }) {
                   required
                 />
               </div>
+
+              {portalType === 'patient' && (
+                <div style={{ textAlign: 'right', marginTop: '0.5rem' }}>
+                  <Link to="/forgot-password" style={{ color: 'var(--primary-color)', textDecoration: 'none', fontSize: '14px' }}>Forgot Password?</Link>
+                </div>
+              )}
 
               <button type="submit" className="btn btn-primary" style={{ marginTop: '0.75rem', width: '100%', padding: '14px 28px' }}>
                 Sign In

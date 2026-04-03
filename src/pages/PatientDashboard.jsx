@@ -288,7 +288,8 @@ export default function PatientDashboard() {
       setProfileMessage('OP details saved successfully. Your information will now auto-load whenever you log back in.');
       setEditingProfile(false);
       fetchProfile();
-    } catch (err) {
+    } catch (error) {
+      console.error('Error saving profile:', error);
       setProfileError('Unable to save OP details.');
     } finally {
       setSavingProfile(false);
